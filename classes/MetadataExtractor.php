@@ -1,0 +1,286 @@
+<?php
+
+namespace APP\plugins\generic\XMLMetadataBuilder\classes;
+
+use PKP\submission\PKPSubmission;
+use PKP\context\Context;
+use PKP\submission\Genre;
+use PKP\submissionFile\SubmissionFile;
+use PKP\services\PKPAuthorService;
+
+/**
+ * MetadataExtractor
+ * 
+ * Extrae y normaliza todos los metadatos necesarios del Submission
+ * para construir la sección <front> del JATS/XML.
+ */
+class MetadataExtractor
+{
+
+    /**
+     * Punto de entrada principal
+     */
+    public function extract(PKPSubmission $submission, Context $context): array
+    {        
+        $authors = $this->extractAuthors($submission);
+        $affiliations = $this->processAffiliations($authors);
+        
+        $result = [
+            'journal'     => $this->extractJournal($context),
+            'article'     => $this->extractArticle($submission),
+            'authors'     => $authors,
+            'affiliations'=> $affiliations,
+            'sections'    => $this->extractSections($submission, $context),
+            'pubDates'    => $this->extractPublicationDates($submission),
+            'permissions' => $this->extractPermissions($submission),
+        ];
+
+        return $result;
+    }
+
+    /**
+     * Datos de la revista
+     */
+    protected function extractJournal(Context $context): array
+    {
+        return [
+            'id'          => $context->getData('urlPath'),  // Use journal path (e.g., "resaa") not numeric ID
+            'title'       => $context->getLocalizedName(),
+            'abbrev'      => $context->getLocalizedAcronym(),
+            'publisher'   => $context->getData('publisherInstitution'),
+            'issn'        => $context->getData('onlineIssn') ?? $context->getData('printIssn'),
+            'url'         => $context->getData('urlPath'),
+        ];
+    }
+
+    /**
+     * Datos del artículo
+     */
+    protected function extractArticle(PKPSubmission $submission): array
+    {
+        $publication = $submission->getCurrentPublication();
+        $issueId = $publication->getData('issueId');
+        
+        // Extract volume/issue information if available
+        $volume = null;
+        $issue = null;
+        $issueYear = null;
+        
+        if ($issueId) {
+            $issueObj = \APP\facades\Repo::issue()->get($issueId);
+            if ($issueObj) {
+                $volume = $issueObj->getVolume();
+                $issue = $issueObj->getNumber();
+                $issueYear = $issueObj->getYear();
+            }
+        }
+        
+        // Extract page information
+        // JATS 1.4: Support both traditional page ranges (fpage/lpage) and electronic location identifiers (elocation-id)
+        $pages = $publication->getData('pages');
+        $firstPage = null;
+        $lastPage = null;
+        $elocationId = null;
+        
+        if ($pages && is_string($pages)) {
+            $trimmedPages = trim($pages);
+            
+            // Check for traditional numeric page ranges like "123-145" or "123"
+            if (preg_match('/^(\d+)\s*[-–—]\s*(\d+)$/', $trimmedPages, $matches)) {
+                // Range of pages
+                $firstPage = $matches[1];
+                $lastPage = $matches[2];
+            } elseif (preg_match('/^(\d+)$/', $trimmedPages, $matches)) {
+                // Single page
+                $firstPage = $matches[1];
+                $lastPage = $matches[1];
+            } else {
+                // Check for electronic location identifier (e.g., "e180", "E70", "e12345")
+                // JATS 1.4: elocation-id is used for electronic-only articles without traditional page numbers
+                // Pattern: letter(s) followed by digits, or any alphanumeric identifier that's not purely numeric
+                if (preg_match('/^[a-zA-Z]\d+$/i', $trimmedPages) || 
+                    (!preg_match('/^\d+$/', $trimmedPages) && !empty($trimmedPages))) {
+                    $elocationId = $trimmedPages;
+                }
+            }
+        }
+        
+        return [
+            'title'       => $publication->getLocalizedTitle(),
+            'subtitle'    => $publication->getLocalizedData('subtitle'),
+            'doi'         => $publication->getDoi(),
+            'abstract'    => $publication->getLocalizedData('abstract'),
+            'keywords'    => (array) ($publication->getLocalizedData('keywords') ?? []),
+            'pages'       => $pages,
+            'firstPage'   => $firstPage,
+            'lastPage'    => $lastPage,
+            'elocationId' => $elocationId,
+            'volume'      => $volume,
+            'issue'       => $issue,
+            'issueYear'   => $issueYear,
+            'languages'   => $publication->getData('locale'),
+            'issueId'     => $issueId,
+            'submissionId'=> $submission->getId(),
+        ];
+    }
+
+
+
+    /**
+     * Procesa las afiliaciones de los autores para extraer únicas y asignar IDs
+     * 
+     * @param array $authors Referencia al array de autores para inyectar affiliationId
+     * @return array Lista de afiliaciones únicas con ID
+     */
+    protected function processAffiliations(array &$authors): array
+    {
+        $affiliationsMap = []; // 'Affiliation String' => 'aff1'
+        $affiliationsList = []; // [['id' => 'aff1', 'name' => 'Affiliation String', 'country' => 'Country']]
+        $nextId = 1;
+        
+        foreach ($authors as &$author) {
+            $affString = $author['affiliation'] ?? '';
+            
+            // Only process non-empty affiliations
+            if (!empty($affString) && trim($affString) !== '') {
+                if (!isset($affiliationsMap[$affString])) {
+                    $id = 'aff' . $nextId++;
+                    $affiliationsMap[$affString] = $id;
+                    $affiliationsList[] = [
+                        'id' => $id, 
+                        'name' => $affString,
+                    ];
+                }
+                $author['affiliationId'] = $affiliationsMap[$affString];
+            } else {
+                $author['affiliationId'] = null;
+            }
+        }
+        
+        return $affiliationsList;
+    }
+
+    /**
+     * Extrae autores del submission
+     */
+    protected function extractAuthors(PKPSubmission $submission): array
+    {
+        $publication = $submission->getCurrentPublication();
+        $authors = $publication->getData('authors') ?? [];
+        $locale = $publication->getData('locale');
+        $result = [];
+
+        foreach ($authors as $author) {
+            $given = $author->getGivenName($locale);
+            $surname = $author->getFamilyName($locale);
+            $affiliation = $author->getAffiliation($locale);
+
+            // Diagnostic: Check if data exists in "best match" locale if missing in current locale
+            if (empty($surname)) {
+                $check = $author->getLocalizedFamilyName();
+            }
+            if (empty($affiliation)) {
+                $check = $author->getLocalizedAffiliation();
+            }
+
+            $given = $this->utf8ize($author->getGivenName($locale));
+            $surname = $this->utf8ize($author->getFamilyName($locale));
+            $affiliation = $this->utf8ize($author->getAffiliation($locale));
+
+            $result[] = [
+                'given'     => $given,
+                'surname'   => $surname,
+                'email'     => $author->getEmail(), // Email is usually ASCII
+                'orcid'     => $author->getOrcid(),
+                'affiliation' => $affiliation ?? '',
+                'country'     => $author->getCountry(),
+                'sequence'    => $author->getSequence(),
+                'isPrimary'   => $author->getPrimaryContact(),
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Ensure string is UTF-8 encoded
+     */
+    private function utf8ize($str) {
+        if (is_null($str)) return null;
+        if (is_array($str)) return ''; // Should be string
+        
+        // If it's already valid UTF-8, return it
+        if (mb_check_encoding($str, 'UTF-8')) {
+            return $str;
+        }
+        
+        // Otherwise convert from likely ISO-8859-1
+        return mb_convert_encoding($str, 'UTF-8', 'ISO-8859-1');
+    }
+
+    /**
+     * Extrae la sección (ej: Artículos, Reseñas, Comunicaciones, etc.)
+     */
+    protected function extractSections(PKPSubmission $submission, Context $context): array
+    {
+        $sectionId = $submission->getCurrentPublication()->getData('sectionId');
+        if (!$sectionId) return ['title' => null, 'abbrev' => null];
+
+        $section = \APP\facades\Repo::section()->get($sectionId);
+
+        return [
+            'title'     => $section ? $section->getLocalizedTitle() : null,
+            'abbrev'    => $section ? $section->getLocalizedAbbrev() : null,
+        ];
+    }
+
+    /**
+     * Fechas importantes del artículo
+     */
+    protected function extractPublicationDates(PKPSubmission $submission): array
+    {
+        $pub = $submission->getCurrentPublication();
+
+        // Get accepted date from editorial decisions
+        $acceptedDate = null;
+        $decisions = \APP\facades\Repo::decision()
+            ->getCollector()
+            ->filterBySubmissionIds([$submission->getId()])
+            ->getMany();
+
+        foreach ($decisions as $decision) {
+            $stageId = $decision->getData('stageId');
+            $decisionType = $decision->getData('decision');
+            $dateDecided = $decision->getData('dateDecided');
+                        
+            // Review stage (stageId=3) and accepted decision (decision=2 in OJS 3.4)
+            if ($stageId == 3 && $decisionType == 2) {
+                $acceptedDate = $dateDecided;
+                break; // Use first acceptance decision found
+            }
+        }
+
+        return [
+            'published' => $pub->getData('datePublished'),
+            'submitted' => $submission->getData('dateSubmitted'),
+            'accepted'  => $acceptedDate,
+            'revised'   => $submission->getData('lastModified'),
+        ];
+    }
+
+    /**
+     * Datos de copyright / licencia
+     */
+    protected function extractPermissions(PKPSubmission $submission): array
+    {
+        $pub = $submission->getCurrentPublication();
+
+        return [
+            'copyrightHolder' => $pub->getLocalizedData('copyrightHolder'),
+            'copyrightYear'   => $pub->getData('copyrightYear'),
+            'licenseUrl'      => $pub->getData('licenseUrl'),
+            'rights'          => $pub->getLocalizedData('rights'),
+            'locale'          => $pub->getData('locale'), // For xml:lang in license
+        ];
+    }
+}
