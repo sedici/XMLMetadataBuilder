@@ -118,6 +118,13 @@ class EnrichmentService
         // Read XML content
         $contents = file_get_contents($path);
         
+        // Get dependent files BEFORE enrichment so we can copy them to new files
+        $dependentFiles = $this->getDependentFiles($fileId);
+        $dependentFileCount = count($dependentFiles);
+        if ($dependentFileCount > 0) {
+            error_log("[EnrichmentService] Found $dependentFileCount dependent file(s) for XML file $fileId");
+        }
+        
         // Enrich the XML using PluginMetadataProcessor
         $newXml = XMLMetadataProcessor::enrichFront($contents, $submission, $publication);
         
@@ -172,6 +179,14 @@ class EnrichmentService
                         'galerada'
                     );
                     
+                    // Copy dependent files to the PROOF file
+                    if (!empty($dependentFiles)) {
+                        error_log("[EnrichmentService] Copying dependent files to proof file (overwrite mode)");
+                        foreach ($dependentFiles as $dependentFile) {
+                            $this->copyDependentFile($dependentFile, $proofFileId, $request->getUser()->getId());
+                        }
+                    }
+                    
                     // Create Galley for the PROOF file (Galerada)
                     if ($publication) {
                         $this->createGalley($proofFileId, $publication, $suffix);
@@ -203,6 +218,14 @@ class EnrichmentService
                     'produccion'
                 );
                 
+                // Copy dependent files to the PRODUCTION file
+                if (!empty($dependentFiles)) {
+                    error_log("[EnrichmentService] Copying dependent files to production file (create-new mode)");
+                    foreach ($dependentFiles as $dependentFile) {
+                        $this->copyDependentFile($dependentFile, $productionFileId, $request->getUser()->getId());
+                    }
+                }
+                
                 $proofFileId = null;
                 
                 // Create GALERADA (PROOF) file ONLY if requested
@@ -219,6 +242,14 @@ class EnrichmentService
                         $now,
                         'galerada'
                     );
+                    
+                    // Copy dependent files to the PROOF file
+                    if (!empty($dependentFiles)) {
+                        error_log("[EnrichmentService] Copying dependent files to proof file (create-new mode)");
+                        foreach ($dependentFiles as $dependentFile) {
+                            $this->copyDependentFile($dependentFile, $proofFileId, $request->getUser()->getId());
+                        }
+                    }
                     
                     // Create Galley for the PROOF file (Galerada)
                     if ($publication) {
@@ -320,7 +351,7 @@ class EnrichmentService
         $newGalley->setData('label', 'XML Enriched');
         $newGalley->setData('locale', $publication->getData('locale') ?: 'en');
         $newGalley->setData('submissionFileId', $submissionFileId);
-        $newGalley->setData('urlPath', $suffix);
+
         
         $galleyId = Repo::galley()->add($newGalley);
     }
@@ -405,6 +436,49 @@ class EnrichmentService
     }
     
     /**
+     * Get enriched XML content without saving to file
+     * 
+     * @param int $fileId ID of the XML file to enrich
+     * @return string The enriched XML content
+     * @throws \Exception
+     */
+    public function getEnrichedXmlContent($fileId)
+    {
+        // Get the submission file
+        $file = Repo::submissionFile()->get($fileId);
+        if (!$file) {
+            throw new \Exception('Archivo no encontrado: ' . $fileId);
+        }
+        
+        $submissionId = $file->getData('submissionId');
+        $submission = Repo::submission()->get($submissionId);
+        
+        if (!$submission) {
+            throw new \Exception('Submission no encontrado para el archivo: ' . $fileId);
+        }
+        
+        // Get current publication
+        $publication = $submission->getCurrentPublication();
+        if (!$publication) {
+            throw new \Exception('Publicación no encontrada para el submission: ' . $submissionId);
+        }
+        
+        // Get file path
+        $path = $this->getFilePath($file);
+        if (!$path || !file_exists($path)) {
+            throw new \Exception('Ruta del archivo no encontrada: ' . ($path ?? 'null'));
+        }
+        
+        // Read original XML content
+        $contents = file_get_contents($path);
+        
+        // Enrich the XML using XMLMetadataProcessor
+        $enrichedXml = XMLMetadataProcessor::enrichFront($contents, $submission, $publication);
+        
+        return $enrichedXml;
+    }
+    
+    /**
      * Extract the front element from an XML file
      *
      * @param int $fileId ID of the XML file
@@ -456,4 +530,159 @@ class EnrichmentService
         
         return $frontXml;
     }
+    
+    /**
+     * Get all dependent files associated with a parent submission file
+     * 
+     * Dependent files in OJS are files that cannot exist independently and are
+     * linked to a main file (e.g., images, stylesheets for an XML/HTML file).
+     * They have fileStage = SUBMISSION_FILE_DEPENDENT (17) and are linked to
+     * their parent via assocType = ASSOC_TYPE_SUBMISSION_FILE and assocId = parent file ID.
+     *
+     * @param int $parentFileId ID of the parent submission file
+     * @return array Array of SubmissionFile objects that are dependent files of this specific parent
+     */
+    protected function getDependentFiles($parentFileId)
+    {
+        $parentFile = Repo::submissionFile()->get($parentFileId);
+        if (!$parentFile) {
+            return [];
+        }
+        
+        $submissionId = $parentFile->getData('submissionId');
+        
+        // Get all dependent files for this submission
+        $allDependentFiles = Repo::submissionFile()
+            ->getCollector()
+            ->filterBySubmissionIds([$submissionId])
+            ->filterByFileStages([SubmissionFile::SUBMISSION_FILE_DEPENDENT])
+            ->getMany();
+        
+        // Filter to get ONLY the dependent files that belong to this specific parent
+        // Check assocType = ASSOC_TYPE_SUBMISSION_FILE (515) and assocId = parentFileId
+        $filteredDependents = [];
+        foreach ($allDependentFiles as $dependentFile) {
+            $assocType = $dependentFile->getData('assocType');
+            $assocId = $dependentFile->getData('assocId');
+            
+            // Check if this dependent file is linked to our parent file
+            if ($assocType == 0x0000203 && $assocId == $parentFileId) {
+                $filteredDependents[] = $dependentFile;
+            }
+        }
+        
+        return $filteredDependents;
+    }
+    
+    /**
+     * Copy a dependent file and link it to a new parent file
+     *
+     * @param SubmissionFile $sourceDependentFile The original dependent file to copy
+     * @param int $newParentFileId ID of the new parent file (enriched XML)
+     * @param int $uploaderUserId ID of the user performing the copy
+     * @return int|null The new dependent file ID, or null on failure
+     */
+    protected function copyDependentFile($sourceDependentFile, $newParentFileId, $uploaderUserId)
+    {
+        try {
+            // Get the new parent file to extract necessary information
+            $newParentFile = Repo::submissionFile()->get($newParentFileId);
+            if (!$newParentFile) {
+                error_log("[EnrichmentService] Cannot copy dependent file: parent file $newParentFileId not found");
+                return null;
+            }
+            
+            // Get the physical path of the source dependent file
+            $sourcePath = $this->getFilePath($sourceDependentFile);
+            if (!$sourcePath || !file_exists($sourcePath)) {
+                error_log("[EnrichmentService] Cannot copy dependent file: source path not found or doesn't exist");
+                return null;
+            }
+            
+            // Create new SubmissionFile object for the dependent file
+            $newDependentFile = Repo::submissionFile()->newDataObject();
+            $newDependentFile->setData('submissionId', $newParentFile->getData('submissionId'));
+            $newDependentFile->setFileStage(SubmissionFile::SUBMISSION_FILE_DEPENDENT);
+            $newDependentFile->setGenreId($sourceDependentFile->getGenreId());
+            $newDependentFile->setData('mimetype', $sourceDependentFile->getData('mimetype'));
+            $newDependentFile->setUploaderUserId($uploaderUserId);
+            
+            // Copy localized name from source
+            $locale = $sourceDependentFile->getData('locale') ?: 'en';
+            $originalName = $sourceDependentFile->getLocalizedData('name');
+            $newDependentFile->setData('name', $originalName, $locale);
+            
+            // Set timestamps
+            $now = \PKP\core\Core::getCurrentDate();
+            $newDependentFile->setData('createdAt', $now);
+            $newDependentFile->setData('updatedAt', $now);
+            
+            // Link to the same publication as the parent
+            $publicationId = $newParentFile->getData('publicationId');
+            if ($publicationId) {
+                $newDependentFile->setData('publicationId', $publicationId);
+            }
+            
+            // CRITICAL: Link this dependent file to its parent file
+            // This is what makes OJS recognize it as a dependent of the parent
+            // assocType = ASSOC_TYPE_SUBMISSION_FILE (0x0000203 = 515 in decimal)
+            // assocId = ID of the parent file
+            $newDependentFile->setData('assocType', 0x0000203); // ASSOC_TYPE_SUBMISSION_FILE
+            $newDependentFile->setData('assocId', $newParentFileId);
+            
+            // Generate unique path for the dependent file
+            $sourceFilePath = $sourceDependentFile->getData('path');
+            $dir = dirname($newParentFile->getData('path'));
+            
+            // Create unique filename by appending timestamp to avoid collisions
+            $basename = pathinfo($originalName, PATHINFO_FILENAME);
+            $extension = pathinfo($originalName, PATHINFO_EXTENSION);
+            $uniqueName = $basename . '-' . time() . '.' . $extension;
+            $newPath = $dir . '/' . $uniqueName;
+            
+            // Copy the physical file to storage
+            $fileService = \APP\core\Services::get('file');
+            $uploadedFileId = $fileService->add($sourcePath, $newPath);
+            
+            $newDependentFile->setData('fileId', $uploadedFileId);
+            $newDependentFile->setData('path', $newPath);
+            
+            // Save to database
+            $savedFile = Repo::submissionFile()->add($newDependentFile, null);
+            $savedFileId = is_numeric($savedFile) ? $savedFile : $savedFile->getId();
+            
+            error_log("[EnrichmentService] Successfully copied dependent file: $originalName (new ID: $savedFileId, parent: $newParentFileId)");
+            
+            return $savedFileId;
+            
+        } catch (\Exception $e) {
+            error_log("[EnrichmentService] Failed to copy dependent file: " . $e->getMessage());
+            error_log($e->getTraceAsString());
+            return null;
+        }
+    }
+    
+    /**
+     * Public wrapper for getDependentFiles - used by download handler
+     * 
+     * @param int $parentFileId ID of the parent submission file
+     * @return array Array of SubmissionFile objects that are dependent files
+     */
+    public function getDependentFilesPublic($parentFileId)
+    {
+        return $this->getDependentFiles($parentFileId);
+    }
+    
+    /**
+     * Public wrapper for getFilePath - used by download handler
+     * 
+     * @param SubmissionFile $file
+     * @return string|null File path
+     */
+    public function getFilePathPublic($file)
+    {
+        return $this->getFilePath($file);
+    }
 }
+
+

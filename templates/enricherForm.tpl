@@ -1,6 +1,15 @@
 <tab id="xmlEnricher" label="{translate key='plugins.generic.XMLMetadataBuilder.publication.jats.fulltext'}">
     <!-- Load JavaScript Module (Moved to top for faster injection) -->
     <script type="text/javascript" src="{$baseUrl}/plugins/generic/XMLMetadataBuilder/templates/js/enricherForm.js?v=3"></script>
+
+    <script type="text/javascript">
+        // Server-generated URLs to avoid guessing contextPath in JS
+        window.XMLMetadataBuilder = window.XMLMetadataBuilder || {};
+        window.XMLMetadataBuilder.urls = {
+            showFront: {$xmlEnricherShowFrontUrl|json_encode},
+            download: {$xmlEnricherDownloadUrl|json_encode}
+        };
+    </script>
     
     <script type="text/javascript">
         // Initialize the form using the external module
@@ -16,6 +25,7 @@
                 XMLEnricherForm.convertSuffixToFieldset();
                 XMLEnricherForm.linkOverwriteToSuffix();
                 XMLEnricherForm.setupShowFrontButton();
+                XMLEnricherForm.setupDownloadButton();
                 XMLEnricherForm.hideFooterErrorText();
             } else {
                 console.error('[XML Enricher] XMLEnricherForm module not loaded');
@@ -32,6 +42,14 @@
             type="button"
             style="display: none;">
             {translate key='plugins.generic.XMLMetadataBuilder.publication.jats.showFront'}
+        </button>
+
+        <button 
+            id="downloadXmlButton" 
+            class="pkpButton" 
+            type="button"
+            style="display: none;">
+            {translate key='plugins.generic.XMLMetadataBuilder.publication.jats.download'}
         </button>
 
         <pkp-form v-bind="components.xmlEnricherForm" @set="set" />

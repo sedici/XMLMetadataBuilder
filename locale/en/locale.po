@@ -41,6 +41,9 @@ msgstr "Show Front"
 msgid "plugins.generic.XMLMetadataBuilder.publication.jats.generate"
 msgstr "Generate Enriched XML"
 
+msgid "plugins.generic.XMLMetadataBuilder.publication.jats.download"
+msgstr "Download"
+
 msgid "plugins.generic.XMLMetadataBuilder.noXmlFiles"
 msgstr "No XML files found in production ready files."
 

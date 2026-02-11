@@ -33,6 +33,7 @@ class MetadataExtractor
             'sections'    => $this->extractSections($submission, $context),
             'pubDates'    => $this->extractPublicationDates($submission),
             'permissions' => $this->extractPermissions($submission),
+            'supplementaryMaterials' => $this->extractSupplementaryMaterials($submission),
         ];
 
         return $result;
@@ -48,7 +49,9 @@ class MetadataExtractor
             'title'       => $context->getLocalizedName(),
             'abbrev'      => $context->getLocalizedAcronym(),
             'publisher'   => $context->getData('publisherInstitution'),
-            'issn'        => $context->getData('onlineIssn') ?? $context->getData('printIssn'),
+            'publisherEmail' => $context->getData('contactEmail'),  // Publisher contact email for <publisher-loc>
+            'onlineIssn'  => $context->getData('onlineIssn'),  // Electronic ISSN (epub)
+            'printIssn'   => $context->getData('printIssn'),   // Print ISSN (ppub)
             'url'         => $context->getData('urlPath'),
         ];
     }
@@ -105,12 +108,35 @@ class MetadataExtractor
             }
         }
         
+        // Construct article public URL for self-uri element
+        $articleUrl = null;
+        try {
+            $request = \APP\core\Application::get()->getRequest();
+            if ($request) {
+                $dispatcher = $request->getDispatcher();
+                $articleUrl = $dispatcher->url(
+                    $request,
+                    \PKP\core\PKPApplication::ROUTE_PAGE,
+                    null,
+                    'article',
+                    'view',
+                    [$submission->getBestId()]
+                );
+            }
+        } catch (\Throwable $e) {
+            // Fallback: construct URL from DOI if available
+            if ($publication->getDoi()) {
+                $articleUrl = 'https://doi.org/' . $publication->getDoi();
+            }
+        }
+        
         return [
-            'title'       => $publication->getLocalizedTitle(),
-            'subtitle'    => $publication->getLocalizedData('subtitle'),
+            'title'       => $publication->getData('title') ?? [],        // Array multilingüe: ['es_ES' => 'Título', 'en_US' => 'Title']
+            'subtitle'    => $publication->getData('subtitle') ?? [],     // Array multilingüe
+            'primaryLocale' => $publication->getData('locale'),           // Idioma principal de la publicación
             'doi'         => $publication->getDoi(),
-            'abstract'    => $publication->getLocalizedData('abstract'),
-            'keywords'    => (array) ($publication->getLocalizedData('keywords') ?? []),
+            'abstract'    => $publication->getData('abstract') ?? [],     // Array multilingüe
+            'keywords'    => $publication->getData('keywords') ?? [],     // Array multilingüe: ['es_ES' => ['kw1', 'kw2'], 'en_US' => ['kw1', 'kw2']]
             'pages'       => $pages,
             'firstPage'   => $firstPage,
             'lastPage'    => $lastPage,
@@ -118,6 +144,7 @@ class MetadataExtractor
             'volume'      => $volume,
             'issue'       => $issue,
             'issueYear'   => $issueYear,
+            'articleUrl'  => $articleUrl,  // For self-uri element
             'languages'   => $publication->getData('locale'),
             'issueId'     => $issueId,
             'submissionId'=> $submission->getId(),
@@ -138,6 +165,21 @@ class MetadataExtractor
         $affiliationsList = []; // [['id' => 'aff1', 'name' => 'Affiliation String', 'country' => 'Country']]
         $nextId = 1;
         
+        // First pass: build affiliations map with country info
+        $affCountryMap = []; // Track country for each affiliation string
+        foreach ($authors as $author) {
+            $affString = $author['affiliation'] ?? '';
+            $country = $author['country'] ?? '';
+            
+            if (!empty($affString) && trim($affString) !== '') {
+                // Associate country with this affiliation if we have it
+                if (!isset($affCountryMap[$affString]) && !empty($country)) {
+                    $affCountryMap[$affString] = $country;
+                }
+            }
+        }
+        
+        // Second pass: assign IDs and build affiliations list
         foreach ($authors as &$author) {
             $affString = $author['affiliation'] ?? '';
             
@@ -149,6 +191,7 @@ class MetadataExtractor
                     $affiliationsList[] = [
                         'id' => $id, 
                         'name' => $affString,
+                        'country' => $affCountryMap[$affString] ?? null, // Add country if available
                     ];
                 }
                 $author['affiliationId'] = $affiliationsMap[$affString];
@@ -186,6 +229,7 @@ class MetadataExtractor
             $given = $this->utf8ize($author->getGivenName($locale));
             $surname = $this->utf8ize($author->getFamilyName($locale));
             $affiliation = $this->utf8ize($author->getAffiliation($locale));
+            $biography = $this->utf8ize($author->getBiography($locale));
 
             $result[] = [
                 'given'     => $given,
@@ -195,7 +239,8 @@ class MetadataExtractor
                 'affiliation' => $affiliation ?? '',
                 'country'     => $author->getCountry(),
                 'sequence'    => $author->getSequence(),
-                'isPrimary'   => $author->getPrimaryContact(),
+                'isPrimary'   => $author->getPrimaryContact(), // For author-notes (corresponding author)
+                'biography'   => $biography, // For <bio> element in <contrib>
             ];
         }
 
@@ -283,4 +328,40 @@ class MetadataExtractor
             'locale'          => $pub->getData('locale'), // For xml:lang in license
         ];
     }
+
+    /**
+     * Extract supplementary/dependent files from submission
+     * These are additional files attached to the article (datasets, code, images, etc.)
+     */
+    protected function extractSupplementaryMaterials(PKPSubmission $submission): array
+    {
+        $publication = $submission->getCurrentPublication();
+        $materials = [];
+        
+        // Get all submission files for this publication
+        $submissionFiles = \APP\facades\Repo::submissionFile()
+            ->getCollector()
+            ->filterBySubmissionIds([$submission->getId()])
+            ->filterByFileStages([\PKP\submissionFile\SubmissionFile::SUBMISSION_FILE_DEPENDENT])
+            ->getMany();
+        
+        foreach ($submissionFiles as $file) {
+            // Only include files associated with the current publication
+            if ($file->getData('assocType') == \APP\core\Application::ASSOC_TYPE_SUBMISSION_FILE ||
+                $file->getData('assocType') == \APP\core\Application::ASSOC_TYPE_REPRESENTATION) {
+                
+                $materials[] = [
+                    'id' => 'supp' . $file->getId(),
+                    'label' => $file->getLocalizedData('name') ?: 'Supplementary File ' . $file->getId(),
+                    'caption' => $file->getLocalizedData('description'),
+                    'mimetype' => $file->getData('mimetype'),
+                    'href' => $file->getData('path'),
+                    'filename' => $file->getData('path') ? basename($file->getData('path')) : null,
+                ];
+            }
+        }
+        
+        return $materials;
+    }
 }
+

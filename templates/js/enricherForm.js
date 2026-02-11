@@ -217,19 +217,33 @@
                         showFrontBtn.textContent = 'Cargando...';
                         showFrontBtn.disabled = true;
 
-                        // Construct URL dynamically
-                        var contextPath = 'publicknowledge'; // Fallback
-                        if (typeof pkp !== 'undefined' && pkp.context && pkp.context.path) {
-                            contextPath = pkp.context.path;
-                        } else {
-                            var pathParts = window.location.pathname.split('/');
-                            var indexIdx = pathParts.indexOf('index.php');
-                            if (indexIdx !== -1 && pathParts.length > indexIdx + 1) {
-                                contextPath = pathParts[indexIdx + 1];
-                            }
-                        }
+                        // Prefer server-generated URL to avoid wrong contextPath
+                        var url = (window.XMLMetadataBuilder && window.XMLMetadataBuilder.urls && window.XMLMetadataBuilder.urls.showFront)
+                            ? window.XMLMetadataBuilder.urls.showFront
+                            : null;
 
-                        var url = '/index.php/' + contextPath + '/XMLMetadataBuilder/showFront';
+                        // Backwards-compatible fallback (no hardcoded context)
+                        if (!url) {
+                            var contextPath = null;
+                            if (typeof pkp !== 'undefined' && pkp.context && pkp.context.path) {
+                                contextPath = pkp.context.path;
+                            } else {
+                                var pathParts = window.location.pathname.split('/');
+                                var indexIdx = pathParts.indexOf('index.php');
+                                if (indexIdx !== -1 && pathParts.length > indexIdx + 1) {
+                                    contextPath = pathParts[indexIdx + 1];
+                                }
+                            }
+
+                            if (!contextPath) {
+                                alert('Error: no se pudo determinar la revista (contextPath) para previsualizar.');
+                                showFrontBtn.textContent = originalText;
+                                showFrontBtn.disabled = false;
+                                return;
+                            }
+
+                            url = '/index.php/' + contextPath + '/XMLMetadataBuilder/showFront';
+                        }
                         console.log('[XML Enricher] Requesting:', url);
 
                         $.ajax({
@@ -333,6 +347,112 @@
     }
 
     /**
+     * Setup Download button to download original XML
+     */
+    function setupDownloadButton() {
+        var attempts = 0;
+        var maxAttempts = 60; // 30 seconds
+
+        console.log('[XML Enricher] Starting Download button setup...');
+
+        var interval = setInterval(function () {
+            attempts++;
+
+            var downloadBtn = document.getElementById('downloadXmlButton');
+            var submitBtn = document.querySelector('.pkp_form button.pkpButton--isPrimary');
+
+            if (!submitBtn) {
+                var allButtons = document.querySelectorAll('button');
+                for (var i = 0; i < allButtons.length; i++) {
+                    if (allButtons[i].textContent.trim().includes('Generar') ||
+                        allButtons[i].textContent.trim().includes('Generate')) {
+                        submitBtn = allButtons[i];
+                        break;
+                    }
+                }
+            }
+
+            var submitBtnContainer = submitBtn ? submitBtn.parentNode : document.querySelector('.pkpForm__footer');
+
+            if (downloadBtn) {
+                if (!downloadBtn.dataset.initialized) {
+                    downloadBtn.dataset.initialized = 'true';
+                    console.log('[XML Enricher] Initializing Download click handler...');
+
+                    downloadBtn.addEventListener('click', function (e) {
+                        e.preventDefault();
+
+                        var selectedFile = document.querySelector('input[name*="xmlFileId"]:checked');
+                        if (!selectedFile) {
+                            pkp.eventBus.$emit('notify', 'Por favor, seleccione un XML primero', 'warning');
+                            return;
+                        }
+
+                        var xmlFileId = selectedFile.value;
+
+                        // Prefer server-generated URL to avoid wrong contextPath
+                        var baseUrl = (window.XMLMetadataBuilder && window.XMLMetadataBuilder.urls && window.XMLMetadataBuilder.urls.download)
+                            ? window.XMLMetadataBuilder.urls.download
+                            : null;
+
+                        // Backwards-compatible fallback (no hardcoded context)
+                        if (!baseUrl) {
+                            var contextPath = null;
+                            if (typeof pkp !== 'undefined' && pkp.context && pkp.context.path) {
+                                contextPath = pkp.context.path;
+                            } else {
+                                var pathParts = window.location.pathname.split('/');
+                                var indexIdx = pathParts.indexOf('index.php');
+                                if (indexIdx !== -1 && pathParts.length > indexIdx + 1) {
+                                    contextPath = pathParts[indexIdx + 1];
+                                }
+                            }
+
+                            if (!contextPath) {
+                                alert('Error: no se pudo determinar la revista (contextPath) para descargar.');
+                                return;
+                            }
+
+                            baseUrl = '/index.php/' + contextPath + '/XMLMetadataBuilder/download';
+                        }
+
+                        var separator = baseUrl.indexOf('?') === -1 ? '?' : '&';
+                        var url = baseUrl + separator + 'xmlFileId=' + encodeURIComponent(xmlFileId);
+                        window.location.href = url;
+                    });
+                }
+
+                if (submitBtnContainer && downloadBtn.parentNode !== submitBtnContainer) {
+                    try {
+                        if (downloadBtn.parentNode) {
+                            downloadBtn.parentNode.removeChild(downloadBtn);
+                        }
+
+                        downloadBtn.style.marginRight = '10px';
+
+                        // Insert before submit button to ensure it is between Show Front (if present) and Submit
+                        if (submitBtn) {
+                            submitBtnContainer.insertBefore(downloadBtn, submitBtn);
+                        } else {
+                            submitBtnContainer.insertBefore(downloadBtn, submitBtnContainer.firstChild);
+                        }
+                        downloadBtn.style.display = '';
+                        console.log('[XML Enricher] Successfully moved download button to footer');
+                        clearInterval(interval);
+                    } catch (err) {
+                        console.error('[XML Enricher] Error moving download button:', err);
+                    }
+                }
+            }
+
+            if (attempts >= maxAttempts) {
+                console.log('[XML Enricher] Max attempts reached for download button');
+                clearInterval(interval);
+            }
+        }, 500);
+    }
+
+    /**
      * Hide the footer error text that appears to the left of the submit button
      */
     function hideFooterErrorText() {
@@ -353,7 +473,9 @@
         injectVueConfig: injectVueConfig,
         convertSuffixToFieldset: convertSuffixToFieldset,
         linkOverwriteToSuffix: linkOverwriteToSuffix,
+        linkOverwriteToSuffix: linkOverwriteToSuffix,
         setupShowFrontButton: setupShowFrontButton,
+        setupDownloadButton: setupDownloadButton,
         hideFooterErrorText: hideFooterErrorText
     };
 })();

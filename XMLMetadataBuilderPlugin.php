@@ -205,10 +205,23 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
         $componentId = 'xmlEnricherForm';
         $formConfig = $form->getConfig();
         
-        // Add AJAX URLs to config
-        // Add AJAX URLs to config
+        // Provide server-generated URLs for auxiliary actions (preview/download)
+        // This prevents broken links when JS guesses the contextPath.
         $dispatcher = $request->getDispatcher();
-        // Note: AJAX URLs removed as we use the standard Publication::edit hook
+        $templateMgr->assign('xmlEnricherShowFrontUrl', $dispatcher->url(
+            $request,
+            Application::ROUTE_PAGE,
+            $context->getPath(),
+            'XMLMetadataBuilder',
+            'showFront'
+        ));
+        $templateMgr->assign('xmlEnricherDownloadUrl', $dispatcher->url(
+            $request,
+            Application::ROUTE_PAGE,
+            $context->getPath(),
+            'XMLMetadataBuilder',
+            'download'
+        ));
                 
         // Assign config to template for JS fallback
         $templateMgr->assign('xmlEnricherConfig', $formConfig);
@@ -395,6 +408,11 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
             $this->handleShowFrontRequest();
             return true;
         }
+
+        if ($page === 'XMLMetadataBuilder' && $op === 'download') {
+            $this->handleDownloadRequest();
+            return true;
+        }
         
         return false;
     }
@@ -406,7 +424,7 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
     {
         $request = Application::get()->getRequest();
         $xmlFileId = $request->getUserVar('xmlFileId');
-        
+         
         header('Content-Type: text/plain; charset=utf-8');
         
         if (!$xmlFileId) {
@@ -427,6 +445,104 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
         
         exit;
     }
+
+    /**
+     * Handle file download request - downloads enriched XML and dependent files as ZIP
+     */
+    public function handleDownloadRequest()
+    {
+        $request = Application::get()->getRequest();
+        $xmlFileId = $request->getUserVar('xmlFileId');
+        
+        if (!$xmlFileId) {
+            echo 'Error: No se especificó un archivo XML';
+            exit;
+        }
+        
+        try {
+            // Get file info for filename
+            $file = Repo::submissionFile()->get((int)$xmlFileId);
+            if (!$file) {
+                 throw new \Exception('Archivo no encontrado');
+            }
+            
+            // Get enriched XML content (in memory, no file created)
+            $service = new \APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService();
+            $enrichedXml = $service->getEnrichedXmlContent((int)$xmlFileId);
+            
+            // Get dependent files
+            $dependentFiles = $service->getDependentFilesPublic((int)$xmlFileId);
+            
+            // Generate base filename
+            $originalFilename = $file->getLocalizedData('name');
+            $baseName = pathinfo($originalFilename, PATHINFO_FILENAME);
+            
+            // If there are no dependent files, just download the XML
+            if (empty($dependentFiles)) {
+                $filename = $baseName . '-enriched.xml';
+                
+                // Set headers for XML download
+                header('Content-Description: File Transfer');
+                header('Content-Type: application/xml');
+                header('Content-Disposition: attachment; filename="' . basename($filename) . '"');
+                header('Expires: 0');
+                header('Cache-Control: must-revalidate');
+                header('Pragma: public');
+                header('Content-Length: ' . strlen($enrichedXml));
+                
+                // Output enriched XML content
+                echo $enrichedXml;
+            } else {
+                // Create ZIP with XML and dependent files
+                $zipFilename = $baseName . '-enriched.zip';
+                $tempZipPath = tempnam(sys_get_temp_dir(), 'xml_download_');
+                
+                // Create ZIP archive
+                $zip = new \ZipArchive();
+                if ($zip->open($tempZipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
+                    throw new \Exception('No se pudo crear el archivo ZIP');
+                }
+                
+                // Add enriched XML to ZIP
+                $xmlFilename = $baseName . '-enriched.xml';
+                $zip->addFromString($xmlFilename, $enrichedXml);
+                
+                // Add dependent files to ZIP
+                foreach ($dependentFiles as $dependentFile) {
+                    $filePath = $service->getFilePathPublic($dependentFile);
+                    if ($filePath && file_exists($filePath)) {
+                        $fileName = $dependentFile->getLocalizedData('name');
+                        $zip->addFile($filePath, $fileName);
+                    }
+                }
+                
+                $zip->close();
+                
+                // Set headers for ZIP download
+                header('Content-Description: File Transfer');
+                header('Content-Type: application/zip');
+                header('Content-Disposition: attachment; filename="' . basename($zipFilename) . '"');
+                header('Expires: 0');
+                header('Cache-Control: must-revalidate');
+                header('Pragma: public');
+                header('Content-Length: ' . filesize($tempZipPath));
+                
+                // Output ZIP file
+                readfile($tempZipPath);
+                
+                // Cleanup temp ZIP file
+                unlink($tempZipPath);
+            }
+            
+        } catch (\Exception $e) {
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'Error: ' . $e->getMessage();
+        }
+        
+        exit;
+    }
+
+
         
 
 }

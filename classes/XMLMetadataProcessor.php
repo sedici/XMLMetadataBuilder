@@ -47,13 +47,17 @@ class XMLMetadataProcessor
                 'id' => $meta['journal']['id'] ?? null,
                 'names' => [$meta['journal']['title'] ?? ''],
                 'abbrev' => $meta['journal']['abbrev'] ?? null,
-                'issn' => $meta['journal']['issn'] ?? null,
+                'onlineIssn' => $meta['journal']['onlineIssn'] ?? null,  // Electronic ISSN
+                'printIssn' => $meta['journal']['printIssn'] ?? null,    // Print ISSN
                 'publisher' => $meta['journal']['publisher'] ?? null,
+                'publisherEmail' => $meta['journal']['publisherEmail'] ?? null, // Publisher contact email
             ],
             'articleId' => $meta['article']['submissionId'] ?? null,
             'doi' => $meta['article']['doi'] ?? null,
-            'title' => is_array($meta['article']['title']) ? reset($meta['article']['title']) : $meta['article']['title'] ?? '',
-            'abstract' => is_array($meta['article']['abstract']) ? reset($meta['article']['abstract']) : $meta['article']['abstract'] ?? null,
+            'title' => $meta['article']['title'] ?? [],              // Array multilingüe completo
+            'subtitle' => $meta['article']['subtitle'] ?? [],        // Array multilingüe
+            'primaryLocale' => $meta['article']['primaryLocale'] ?? 'es', // Idioma principal
+            'abstract' => $meta['article']['abstract'] ?? [],        // Array multilingüe completo
             'keywords' => $meta['article']['keywords'] ?? [],
             'languages' => $meta['article']['languages'] ?? 'en', // For xml:lang attribute
             'volume' => $meta['article']['volume'] ?? null,
@@ -61,6 +65,7 @@ class XMLMetadataProcessor
             'firstPage' => $meta['article']['firstPage'] ?? null,
             'lastPage' => $meta['article']['lastPage'] ?? null,
             'elocationId' => $meta['article']['elocationId'] ?? null,
+            'articleUrl' => $meta['article']['articleUrl'] ?? null,  // For self-uri
             'dates' => $meta['pubDates'] ?? [],
             'history' => [
                 'submitted' => $meta['pubDates']['submitted'] ?? null,
@@ -78,6 +83,7 @@ class XMLMetadataProcessor
                     'affiliationId' => $a['affiliationId'] ?? null, // ID for xref
                     'sequence' => $a['sequence'] ?? null,
                     'isPrimary' => $a['isPrimary'] ?? false,
+                    'biography' => $a['biography'] ?? null, // For <bio> element in <contrib>
                     // JATSBuilder expects 'affiliations' key for legacy reasons? 
                     // No, JATSBuilder now looks for 'affiliationId' OR 'affiliation'. 
                     // But previous code (lines 79) mapped 'affiliations' => [string].
@@ -95,8 +101,25 @@ class XMLMetadataProcessor
             'custom' => [
                 'section-title' => $meta['sections']['title'] ?? null,
                 'section-abbrev' => $meta['sections']['abbrev'] ?? null
-            ]
+            ],
+            'supplementaryMaterials' => $meta['supplementaryMaterials'] ?? [],
         ];
+        
+        // Extract and preserve <counts> from original XML if it exists
+        // This preserves fig-count, table-count, ref-count, etc. from SciELO XMLs
+        $countsElement = null;
+        $oldFronts = $dom->getElementsByTagName('front');
+        if ($oldFronts->length) {
+            $oldFront = $oldFronts->item(0);
+            $countsNodes = $oldFront->getElementsByTagName('counts');
+            if ($countsNodes->length) {
+                // Clone the counts element to preserve it
+                $countsElement = $countsNodes->item(0)->cloneNode(true);
+            }
+        }
+        
+        // Pass counts element to builder
+        $builderMeta['countsElement'] = $countsElement;
         
         // Build <front> with JATSBuilder
         $builder = new JATSBuilder();
