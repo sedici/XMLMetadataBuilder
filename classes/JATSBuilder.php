@@ -279,19 +279,25 @@ class JATSBuilder
             }
         }
         
-        // 9.5. self-uri (article URL - MUST come after pages per JATS DTD)
-        // JATS: self-uri contains the URI/URL of the article itself
-        if (!empty($metadata['articleUrl'])) {
-            $articleMeta->appendChild(
-                $this->elAttr('self-uri', ['xlink:href' => $metadata['articleUrl']])
-            );
-        }
-
         // 9.5. supplementary-material (MUST come after pages and before history per JATS DTD)
         // Include any supplementary files (datasets, code, additional images, etc.)
         if (!empty($metadata['supplementaryMaterials'])) {
             foreach ($metadata['supplementaryMaterials'] as $material) {
-                $suppMat = $this->elAttr('supplementary-material', ['id' => $material['id']]);
+                // SciELO requires mimetype and mime-subtype as separate attributes
+                $suppMatAttrs = ['id' => $material['id']];
+                
+                // Add mimetype and mime-subtype to supplementary-material element
+                if (!empty($material['mimetype'])) {
+                    $mimeparts = $this->splitMimeType($material['mimetype']);
+                    if (!empty($mimeparts['mimetype'])) {
+                        $suppMatAttrs['mimetype'] = $mimeparts['mimetype'];
+                    }
+                    if (!empty($mimeparts['mime-subtype'])) {
+                        $suppMatAttrs['mime-subtype'] = $mimeparts['mime-subtype'];
+                    }
+                }
+                
+                $suppMat = $this->elAttr('supplementary-material', $suppMatAttrs);
                 
                 // Add label if available
                 if (!empty($material['label'])) {
@@ -307,10 +313,17 @@ class JATSBuilder
                 
                 // Add media element with file reference
                 if (!empty($material['filename']) && !empty($material['mimetype'])) {
-                    $mediaAttrs = [
-                        'xlink:href' => $material['filename'],
-                        'mimetype' => $material['mimetype']
-                    ];
+                    $mimeparts = $this->splitMimeType($material['mimetype']);
+                    $mediaAttrs = ['xlink:href' => $material['filename']];
+                    
+                    // SciELO requires mimetype and mime-subtype as separate attributes
+                    if (!empty($mimeparts['mimetype'])) {
+                        $mediaAttrs['mimetype'] = $mimeparts['mimetype'];
+                    }
+                    if (!empty($mimeparts['mime-subtype'])) {
+                        $mediaAttrs['mime-subtype'] = $mimeparts['mime-subtype'];
+                    }
+                    
                     $suppMat->appendChild($this->elAttr('media', $mediaAttrs));
                 }
                 
@@ -330,6 +343,14 @@ class JATSBuilder
         if (!empty($metadata['license'])) {
             $articleMeta->appendChild(
                 $this->buildPermissions($metadata['license'])
+            );
+        }
+
+        // 11.5. self-uri (article URL - MUST come after permissions and before abstract)
+        // JATS: self-uri contains the URI/URL of the article itself
+        if (!empty($metadata['articleUrl'])) {
+            $articleMeta->appendChild(
+                $this->elAttr('self-uri', ['xlink:href' => $metadata['articleUrl']])
             );
         }
 
@@ -720,5 +741,26 @@ class JATSBuilder
         }
 
         return $group;
+    }
+
+    /***********************************************************************
+     * HELPER METHODS
+     **********************************************************************/
+    
+    /**
+     * Split mimetype into mimetype and mime-subtype components
+     * Example: "application/pdf" => ["mimetype" => "application", "mime-subtype" => "pdf"]
+     */
+    private function splitMimeType($fullMimetype)
+    {
+        if (empty($fullMimetype)) {
+            return ['mimetype' => '', 'mime-subtype' => ''];
+        }
+        
+        $parts = explode('/', $fullMimetype, 2);
+        return [
+            'mimetype' => $parts[0] ?? '',
+            'mime-subtype' => $parts[1] ?? ''
+        ];
     }
 }
