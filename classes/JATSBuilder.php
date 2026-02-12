@@ -4,16 +4,21 @@ namespace APP\plugins\generic\XMLMetadataBuilder\classes;
 
 use DOMDocument;
 use DOMElement;
+use APP\plugins\generic\XMLMetadataBuilder\classes\CountryMapper\CountryMapper;
 
 class JATSBuilder
 {
     /** @var DOMDocument */
     private $doc;
 
+    /** @var CountryMapper */
+    private $countryMapper;
+
     public function __construct()
     {
         $this->doc = new DOMDocument('1.0', 'UTF-8');
         $this->doc->formatOutput = true;
+        $this->countryMapper = new CountryMapper();
     }
 
     /**
@@ -195,9 +200,51 @@ class JATSBuilder
                 $this->elAttr('institution', ['content-type' => 'original'], $affData['name'])
             );
             
+            // Add addr-line element (empty, for JATS structural compliance)
+            // JATS allows addr-line to preserve address formatting
+            $affEl->appendChild($this->el('addr-line'));
+            
             // Add country if available (JATS standard element)
+            // SciELO requires country attribute with ISO 3166-1 alpha-2 code
+            // NOTE: OJS's $author->getCountry() returns ISO code, not country name
             if (!empty($affData['country'])) {
-                $affEl->appendChild($this->el('country', $affData['country']));
+                $countryValue = trim($affData['country']);
+                
+                // Check if the value is already an ISO code (2 uppercase letters)
+                // OJS stores country as ISO code by default
+                if (preg_match('/^[A-Z]{2}$/i', $countryValue)) {
+                    // Value is ISO code - use it for the attribute
+                    $isoCode = strtoupper($countryValue);
+                    
+                    // Get country name for element content (Spanish by default)
+                    $countryName = $this->countryMapper->getCountryName($isoCode, 'es');
+                    
+                    // If name not found in Spanish, try English
+                    if (!$countryName) {
+                        $countryName = $this->countryMapper->getCountryName($isoCode, 'en');
+                    }
+                    
+                    // Use country name if found, otherwise use ISO code as fallback
+                    $countryText = $countryName ?: $isoCode;
+                    
+                    // Create country element with ISO code attribute
+                    $countryEl = $this->elAttr('country', ['country' => $isoCode], $countryText);
+                } else {
+                    // Value is a country name - try to get ISO code
+                    $isoCode = $this->countryMapper->getCountryCode($countryValue, 'es');
+                    if (!$isoCode) {
+                        $isoCode = $this->countryMapper->getCountryCode($countryValue);
+                    }
+                    
+                    if ($isoCode) {
+                        $countryEl = $this->elAttr('country', ['country' => $isoCode], $countryValue);
+                    } else {
+                        // Fallback: create country element without attribute if ISO code not found
+                        $countryEl = $this->el('country', $countryValue);
+                    }
+                }
+                
+                $affEl->appendChild($countryEl);
             }
             
             $articleMeta->appendChild($affEl);
