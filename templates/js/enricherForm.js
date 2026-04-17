@@ -4,7 +4,6 @@
  */
 (function () {
     'use strict';
-    console.log('[XML Enricher] Loading module v3...');
 
     /**
      * Inject Vue component configuration into OJS
@@ -25,7 +24,6 @@
 
                 if (!pkp.const.components[componentId]) {
                     pkp.const.components[componentId] = formConfig;
-                    console.log('[XML Enricher] Injected into pkp.const.components');
                 }
 
                 if (!pkp.const.publicationFormIds) pkp.const.publicationFormIds = [];
@@ -40,7 +38,6 @@
                     if (instance.components) {
                         if (!instance.components[componentId]) {
                             instance.$set(instance.components, componentId, formConfig);
-                            console.log('[XML Enricher] Injected config into Vue instance');
                         }
 
                         if (instance.publicationFormIds && !instance.publicationFormIds.includes(componentId)) {
@@ -107,13 +104,11 @@
                     wrapper.innerHTML = '';
                     wrapper.appendChild(fieldset);
 
-                    console.log('[XML Enricher] Converted Suffix field to fieldset structure');
                     clearInterval(interval);
                 }
             }
 
             if (attempts >= maxAttempts) {
-                console.log('[XML Enricher] Max attempts reached for suffix field conversion');
                 clearInterval(interval);
             }
         }, 500);
@@ -141,7 +136,6 @@
                 updateSuffixState();
                 overwriteCheckbox.addEventListener('change', updateSuffixState);
 
-                console.log('[XML Enricher] Suffix field linked to overwrite checkbox');
                 clearInterval(checkInterval);
             }
         }, 500);
@@ -154,7 +148,6 @@
         var attempts = 0;
         var maxAttempts = 60; // 30 seconds
 
-        console.log('[XML Enricher] Starting button setup...');
 
         var interval = setInterval(function () {
             attempts++;
@@ -164,10 +157,8 @@
             // Log what we find to debug
             if (attempts % 10 === 0) {
                 var buttons = document.querySelectorAll('button');
-                console.log('[XML Enricher] Attempt ' + attempts + '. Found ' + buttons.length + ' buttons.');
                 buttons.forEach(function (b) {
                     if (b.textContent.includes('Generar') || b.textContent.includes('Generate')) {
-                        console.log('[XML Enricher] Found Generate button candidate:', b.className, b);
                     }
                 });
             }
@@ -194,11 +185,9 @@
                 // Initialize click handler immediately, don't wait for move
                 if (!showFrontBtn.dataset.initialized) {
                     showFrontBtn.dataset.initialized = 'true';
-                    console.log('[XML Enricher] Initializing click handler...');
 
                     showFrontBtn.addEventListener('click', function (e) {
                         e.preventDefault();
-                        console.log('[XML Enricher] Button clicked!');
 
                         // Get selected XML file
                         var selectedFile = document.querySelector('input[name*="xmlFileId"]:checked');
@@ -210,7 +199,6 @@
 
                         var xmlFileId = selectedFile.value;
 
-                        console.log('[XML Enricher] Show Front - File:', xmlFileId);
 
                         // Show loading state
                         var originalText = showFrontBtn.textContent;
@@ -244,7 +232,6 @@
 
                             url = '/index.php/' + contextPath + '/XMLMetadataBuilder/showFront';
                         }
-                        console.log('[XML Enricher] Requesting:', url);
 
                         $.ajax({
                             url: url,
@@ -254,13 +241,11 @@
                                 csrfToken: (typeof pkp !== 'undefined' && pkp.currentUser) ? pkp.currentUser.csrfToken : null
                             },
                             success: function (response) {
-                                console.log('[XML Enricher] Success response received');
                                 showFrontModal(response);
                                 showFrontBtn.textContent = originalText;
                                 showFrontBtn.disabled = false;
                             },
                             error: function (xhr, status, error) {
-                                console.error('[XML Enricher] Error:', xhr);
                                 var msg = 'Error al obtener el Front del XML';
                                 if (xhr.status === 404) {
                                     msg += ': Endpoint no encontrado (' + url + ')';
@@ -289,16 +274,13 @@
                         // Insert
                         submitBtnContainer.insertBefore(showFrontBtn, submitBtnContainer.firstChild);
                         showFrontBtn.style.display = ''; // Show it now that it is moved
-                        console.log('[XML Enricher] Successfully moved button to footer');
                         clearInterval(interval); // Stop checking once moved
                     } catch (err) {
-                        console.error('[XML Enricher] Error moving button:', err);
                     }
                 }
             }
 
             if (attempts >= maxAttempts) {
-                console.log('[XML Enricher] Max attempts reached. Button status:', showFrontBtn ? 'Found' : 'Not Found');
                 clearInterval(interval);
             }
         }, 500);
@@ -353,7 +335,6 @@
         var attempts = 0;
         var maxAttempts = 60; // 30 seconds
 
-        console.log('[XML Enricher] Starting Download button setup...');
 
         var interval = setInterval(function () {
             attempts++;
@@ -377,7 +358,6 @@
             if (downloadBtn) {
                 if (!downloadBtn.dataset.initialized) {
                     downloadBtn.dataset.initialized = 'true';
-                    console.log('[XML Enricher] Initializing Download click handler...');
 
                     downloadBtn.addEventListener('click', function (e) {
                         e.preventDefault();
@@ -437,16 +417,13 @@
                             submitBtnContainer.insertBefore(downloadBtn, submitBtnContainer.firstChild);
                         }
                         downloadBtn.style.display = '';
-                        console.log('[XML Enricher] Successfully moved download button to footer');
                         clearInterval(interval);
                     } catch (err) {
-                        console.error('[XML Enricher] Error moving download button:', err);
                     }
                 }
             }
 
             if (attempts >= maxAttempts) {
-                console.log('[XML Enricher] Max attempts reached for download button');
                 clearInterval(interval);
             }
         }, 500);
@@ -465,7 +442,6 @@
             }
         `;
         document.head.appendChild(style);
-        console.log('[XML Enricher] Injected CSS to hide footer error text');
     }
 
     // Export functions to global scope

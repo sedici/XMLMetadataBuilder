@@ -367,8 +367,6 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
                 ]
             );
         } catch (\Exception $e) {
-            error_log('[XMLMetadataBuilder::handlePublicationEdit] Enrichment failed: ' . $e->getMessage());
-            error_log($e->getTraceAsString());
         }
         
         return false;

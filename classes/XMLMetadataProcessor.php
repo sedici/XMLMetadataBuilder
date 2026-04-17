@@ -33,7 +33,6 @@ class XMLMetadataProcessor
                 $context = $request ? $request->getContext() : null;
             } catch (\Throwable $e) {
                 // Application::get() might fail in CLI/Test mode without bootstrap
-                error_log('[PluginMetadataProcessor::enrichFront] Warning: Could not fetch context from Application: ' . $e->getMessage());
             }
         }
 

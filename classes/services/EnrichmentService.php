@@ -121,9 +121,6 @@ class EnrichmentService
         // Get dependent files BEFORE enrichment so we can copy them to new files
         $dependentFiles = $this->getDependentFiles($fileId);
         $dependentFileCount = count($dependentFiles);
-        if ($dependentFileCount > 0) {
-            error_log("[EnrichmentService] Found $dependentFileCount dependent file(s) for XML file $fileId");
-        }
         
         // Enrich the XML using PluginMetadataProcessor
         $newXml = XMLMetadataProcessor::enrichFront($contents, $submission, $publication);
@@ -181,7 +178,6 @@ class EnrichmentService
                     
                     // Copy dependent files to the PROOF file
                     if (!empty($dependentFiles)) {
-                        error_log("[EnrichmentService] Copying dependent files to proof file (overwrite mode)");
                         foreach ($dependentFiles as $dependentFile) {
                             $this->copyDependentFile($dependentFile, $proofFileId, $request->getUser()->getId());
                         }
@@ -220,7 +216,6 @@ class EnrichmentService
                 
                 // Copy dependent files to the PRODUCTION file
                 if (!empty($dependentFiles)) {
-                    error_log("[EnrichmentService] Copying dependent files to production file (create-new mode)");
                     foreach ($dependentFiles as $dependentFile) {
                         $this->copyDependentFile($dependentFile, $productionFileId, $request->getUser()->getId());
                     }
@@ -245,7 +240,6 @@ class EnrichmentService
                     
                     // Copy dependent files to the PROOF file
                     if (!empty($dependentFiles)) {
-                        error_log("[EnrichmentService] Copying dependent files to proof file (create-new mode)");
                         foreach ($dependentFiles as $dependentFile) {
                             $this->copyDependentFile($dependentFile, $proofFileId, $request->getUser()->getId());
                         }
@@ -588,14 +582,12 @@ class EnrichmentService
             // Get the new parent file to extract necessary information
             $newParentFile = Repo::submissionFile()->get($newParentFileId);
             if (!$newParentFile) {
-                error_log("[EnrichmentService] Cannot copy dependent file: parent file $newParentFileId not found");
                 return null;
             }
             
             // Get the physical path of the source dependent file
             $sourcePath = $this->getFilePath($sourceDependentFile);
             if (!$sourcePath || !file_exists($sourcePath)) {
-                error_log("[EnrichmentService] Cannot copy dependent file: source path not found or doesn't exist");
                 return null;
             }
             
@@ -651,13 +643,9 @@ class EnrichmentService
             $savedFile = Repo::submissionFile()->add($newDependentFile, null);
             $savedFileId = is_numeric($savedFile) ? $savedFile : $savedFile->getId();
             
-            error_log("[EnrichmentService] Successfully copied dependent file: $originalName (new ID: $savedFileId, parent: $newParentFileId)");
-            
             return $savedFileId;
             
         } catch (\Exception $e) {
-            error_log("[EnrichmentService] Failed to copy dependent file: " . $e->getMessage());
-            error_log($e->getTraceAsString());
             return null;
         }
     }

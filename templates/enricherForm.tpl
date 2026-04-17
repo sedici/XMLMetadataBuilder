@@ -17,8 +17,6 @@
             var formConfig = {$xmlEnricherConfig|json_encode};
             var componentId = 'xmlEnricherForm';
             
-            console.log('[XML Enricher] Initializing with config for:', componentId);
-            
             // Use the exported functions from XMLEnricherForm module
             if (typeof XMLEnricherForm !== 'undefined') {
                 XMLEnricherForm.injectVueConfig(componentId, formConfig, 50);
@@ -28,7 +26,6 @@
                 XMLEnricherForm.setupDownloadButton();
                 XMLEnricherForm.hideFooterErrorText();
             } else {
-                console.error('[XML Enricher] XMLEnricherForm module not loaded');
             }
         })();
     </script>
