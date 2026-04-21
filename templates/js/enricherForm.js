@@ -237,8 +237,7 @@
                             url: url,
                             type: 'POST',
                             data: {
-                                xmlFileId: xmlFileId,
-                                csrfToken: (typeof pkp !== 'undefined' && pkp.currentUser) ? pkp.currentUser.csrfToken : null
+                                xmlFileId: xmlFileId
                             },
                             success: function (response) {
                                 showFrontModal(response);
@@ -448,7 +447,6 @@
     window.XMLEnricherForm = {
         injectVueConfig: injectVueConfig,
         convertSuffixToFieldset: convertSuffixToFieldset,
-        linkOverwriteToSuffix: linkOverwriteToSuffix,
         linkOverwriteToSuffix: linkOverwriteToSuffix,
         setupShowFrontButton: setupShowFrontButton,
         setupDownloadButton: setupDownloadButton,

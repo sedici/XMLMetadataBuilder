@@ -350,26 +350,52 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
     public function handleShowFrontRequest()
     {
         $request = Application::get()->getRequest();
-        $xmlFileId = $request->getUserVar('xmlFileId');
-         
+
         header('Content-Type: text/plain; charset=utf-8');
-        
-        if (!$xmlFileId) {
-            echo 'Error: No se especificó un archivo XML';
+
+        // 1. Require authenticated user
+        $user = $request->getUser();
+        if (!$user) {
+            http_response_code(403);
+            echo 'Error: Acceso denegado';
             exit;
         }
-        
+
+        // 2. Validate xmlFileId as a positive integer
+        $xmlFileId = (int) $request->getUserVar('xmlFileId');
+        if ($xmlFileId <= 0) {
+            http_response_code(400);
+            echo 'Error: ID de archivo inválido';
+            exit;
+        }
+
+        // 3. Verify the file exists and belongs to a submission the user can access
+        $file = Repo::submissionFile()->get($xmlFileId);
+        if (!$file) {
+            http_response_code(404);
+            echo 'Error: Archivo no encontrado';
+            exit;
+        }
+
+        if (!$this->userCanAccessSubmission($request, $user, $file->getData('submissionId'))) {
+            http_response_code(403);
+            echo 'Error: No tiene permisos para acceder a este archivo';
+            exit;
+        }
+
         try {
             $service = new \APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService();
-            
+
             // Extract and show the original front element (without enrichment)
-            $frontXml = $service->extractFrontElement((int)$xmlFileId);
-            
+            $frontXml = $service->extractFrontElement($xmlFileId);
+
             echo $frontXml;
         } catch (\Exception $e) {
-            echo 'Error: ' . $e->getMessage();
+            http_response_code(500);
+            error_log('[XMLMetadataBuilder] showFront error: ' . $e->getMessage());
+            echo 'Error: No se pudo procesar el archivo XML';
         }
-        
+
         exit;
     }
 
@@ -379,18 +405,41 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
     public function handleDownloadRequest()
     {
         $request = Application::get()->getRequest();
-        $xmlFileId = $request->getUserVar('xmlFileId');
-        
-        if (!$xmlFileId) {
-            echo 'Error: No se especificó un archivo XML';
+
+        // 1. Require authenticated user
+        $user = $request->getUser();
+        if (!$user) {
+            http_response_code(403);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'Error: Acceso denegado';
             exit;
         }
-        
+
+        // 2. Validate xmlFileId as a positive integer
+        $xmlFileId = (int) $request->getUserVar('xmlFileId');
+        if ($xmlFileId <= 0) {
+            http_response_code(400);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'Error: ID de archivo inválido';
+            exit;
+        }
+
         try {
             // Get file info for filename
-            $file = Repo::submissionFile()->get((int)$xmlFileId);
+            $file = Repo::submissionFile()->get($xmlFileId);
             if (!$file) {
-                 throw new \Exception('Archivo no encontrado');
+                http_response_code(404);
+                header('Content-Type: text/plain; charset=utf-8');
+                echo 'Error: Archivo no encontrado';
+                exit;
+            }
+
+            // 3. Verify the user has access to the submission this file belongs to
+            if (!$this->userCanAccessSubmission($request, $user, $file->getData('submissionId'))) {
+                http_response_code(403);
+                header('Content-Type: text/plain; charset=utf-8');
+                echo 'Error: No tiene permisos para acceder a este archivo';
+                exit;
             }
             
             // Get enriched XML content (in memory, no file created)
@@ -463,14 +512,65 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
             
         } catch (\Exception $e) {
             header('Content-Type: text/plain; charset=utf-8');
-            echo 'Error: ' . $e->getMessage();
+            error_log('[XMLMetadataBuilder] download error: ' . $e->getMessage());
+            echo 'Error: No se pudo procesar la descarga';
         }
-        
+
         exit;
     }
 
+    /**
+     * Check whether the current user has access to a given submission.
+     * Works for site admins, journal managers, editors, and assigned participants.
+     *
+     * @param \PKP\core\PKPRequest $request
+     * @param \PKP\user\User $user
+     * @param int $submissionId
+     * @return bool
+     */
+    protected function userCanAccessSubmission($request, $user, $submissionId)
+    {
+        if (!$submissionId) {
+            return false;
+        }
 
-        
+        $submission = Repo::submission()->get((int) $submissionId);
+        if (!$submission) {
+            return false;
+        }
+
+        // Site administrators always have access
+        if ($user->hasRole([
+            \PKP\security\Role::ROLE_ID_SITE_ADMIN
+        ], \PKP\core\PKPApplication::CONTEXT_SITE)) {
+            return true;
+        }
+
+        // Verify the submission belongs to the current context
+        $context = $request->getContext();
+        if (!$context || $submission->getData('contextId') !== $context->getId()) {
+            return false;
+        }
+
+        $contextId = $context->getId();
+
+        // Journal managers and editors have access to all submissions in their journal
+        if ($user->hasRole([
+            \PKP\security\Role::ROLE_ID_MANAGER,
+            \PKP\security\Role::ROLE_ID_SUB_EDITOR,
+        ], $contextId)) {
+            return true;
+        }
+
+        // Check if the user is assigned as a participant to this submission
+        $stageAssignments = \PKP\db\DAORegistry::getDAO('StageAssignmentDAO')
+            ->getBySubmissionAndUserIdAndStageId($submissionId, $user->getId(), null);
+        if ($stageAssignments && !$stageAssignments->wasEmpty()) {
+            return true;
+        }
+
+        return false;
+    }
 
 }
 

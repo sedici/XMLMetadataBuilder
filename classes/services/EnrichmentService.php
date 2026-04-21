@@ -112,7 +112,7 @@ class EnrichmentService
         // Get file path
         $path = $this->getFilePath($file);
         if (!$path || !file_exists($path)) {
-            throw new \Exception('File path not found or does not exist: ' . ($path ?? 'null'));
+            throw new \Exception('Ruta del archivo no encontrada o inexistente');
         }
         
         // Read XML content
@@ -310,9 +310,15 @@ class EnrichmentService
         $destinationPath = $sourceFile->getData('path');
         $dir = dirname($destinationPath);
         
+        // Sanitize filename to prevent path traversal
+        // Strip any directory separators and dangerous characters, keep only safe chars
+        $safeBasename = preg_replace('/[^a-zA-Z0-9_\-]/', '_', pathinfo($filename, PATHINFO_FILENAME));
+        if (empty($safeBasename)) {
+            $safeBasename = 'enriched_' . time();
+        }
         // Make the filename unique by appending stage identifier
         $stageLabel = ($fileStage === SubmissionFile::SUBMISSION_FILE_PRODUCTION_READY) ? 'production' : 'proof';
-        $uniqueFilename = pathinfo($filename, PATHINFO_FILENAME) . '-' . $stageLabel . '.xml';
+        $uniqueFilename = $safeBasename . '-' . $stageLabel . '.xml';
         $newPath = $dir . '/' . $uniqueFilename;
                 
         // Upload file to storage
@@ -460,7 +466,7 @@ class EnrichmentService
         // Get file path
         $path = $this->getFilePath($file);
         if (!$path || !file_exists($path)) {
-            throw new \Exception('Ruta del archivo no encontrada: ' . ($path ?? 'null'));
+            throw new \Exception('Ruta del archivo no encontrada o inexistente');
         }
         
         // Read original XML content
@@ -491,7 +497,7 @@ class EnrichmentService
         // Get file path
         $path = $this->getFilePath($file);
         if (!$path || !file_exists($path)) {
-            throw new \Exception('Ruta del archivo no encontrada: ' . ($path ?? 'null'));
+            throw new \Exception('Ruta del archivo no encontrada o inexistente');
         }
         
         // Read XML content
@@ -623,13 +629,15 @@ class EnrichmentService
             $newDependentFile->setData('assocId', $newParentFileId);
             
             // Generate unique path for the dependent file
-            $sourceFilePath = $sourceDependentFile->getData('path');
             $dir = dirname($newParentFile->getData('path'));
-            
-            // Create unique filename by appending timestamp to avoid collisions
-            $basename = pathinfo($originalName, PATHINFO_FILENAME);
-            $extension = pathinfo($originalName, PATHINFO_EXTENSION);
-            $uniqueName = $basename . '-' . time() . '.' . $extension;
+
+            // Sanitize filename to prevent path traversal
+            $safeBasename = preg_replace('/[^a-zA-Z0-9_\-]/', '_', pathinfo($originalName, PATHINFO_FILENAME));
+            if (empty($safeBasename)) {
+                $safeBasename = 'dependent_' . time();
+            }
+            $extension = preg_replace('/[^a-zA-Z0-9]/', '', pathinfo($originalName, PATHINFO_EXTENSION));
+            $uniqueName = $safeBasename . '-' . time() . ($extension ? '.' . $extension : '');
             $newPath = $dir . '/' . $uniqueName;
             
             // Copy the physical file to storage
