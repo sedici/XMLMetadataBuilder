@@ -7,9 +7,6 @@ namespace APP\plugins\generic\XMLMetadataBuilder;
 
 use PKP\plugins\GenericPlugin;
 use PKP\plugins\Hook;
-use PKP\linkAction\LinkAction;
-use PKP\linkAction\request\AjaxModal;
-use PKP\core\JSONMessage;
 use APP\core\Application;
 use APP\template\TemplateManager;
 use APP\facades\Repo;
@@ -77,74 +74,6 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
         return $request->getBaseUrl() . '/' . $this->getPluginPath();
     }
 
-    /**
-     * Botón Settings
-     */
-    public function getActions($request, $actionArgs)
-    {
-        $actions = parent::getActions($request, $actionArgs);
-
-        if (!$this->getEnabled()) {
-            return $actions;
-        }
-
-        $router = $request->getRouter();
-        $dispatcher = $router->getDispatcher();
-
-        $settingsUrl = $dispatcher->url(
-            $request,
-            Application::ROUTE_PAGE,
-            null,
-            'management',
-            'settings',
-            'plugin',
-            [
-                'plugin' => $this->getName(),
-                'category' => 'generic'
-            ]
-        );
-
-        $actions[] = new LinkAction(
-            'settings',
-            new AjaxModal($settingsUrl, $this->getDisplayName()),
-            __('manager.plugins.settings'),
-            null
-        );
-
-        return $actions;
-    }
-
-    /**
-     * Settings
-     */
-    public function manage($args, $request)
-    {
-        if ($request->getUserVar('verb') === 'settings') {
-            $formClass = 'APP\\plugins\\generic\\XMLMetadataBuilder\\XMLMetadataBuilderSettingsForm';
-
-            if (class_exists($formClass)) {
-                $form = new $formClass($this);
-
-                if (!$request->getUserVar('save')) {
-                    $form->initData();
-                    return new JSONMessage(true, $form->fetch($request));
-                }
-
-                $form->readInputData();
-
-                if ($form->validate()) {
-                    $form->execute();
-                    return new JSONMessage(true);
-                }
-            }
-        }
-
-        return parent::manage($args, $request);
-    }
-
-    /* -------------------------------------------------------
-     *  Add a tab to Publication Workflow
-     * ------------------------------------------------------*/
 
     /**
      * Add XML Enricher tab to Publication Workflow
