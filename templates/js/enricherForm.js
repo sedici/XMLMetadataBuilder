@@ -230,7 +230,9 @@
                                 return;
                             }
 
-                            url = '/index.php/' + contextPath + '/XMLMetadataBuilder/showFront';
+                            var subInput = document.querySelector('input[name="submissionId"], input[id*="submissionId"]');
+                            var params = subInput ? ('?submissionId=' + subInput.value + '&stageId=5') : '?stageId=5';
+                            url = '/index.php/' + contextPath + '/XMLMetadataBuilder/showFront' + params;
                         }
 
                         $.ajax({
@@ -392,7 +394,9 @@
                                 return;
                             }
 
-                            baseUrl = '/index.php/' + contextPath + '/XMLMetadataBuilder/download';
+                            var subInput = document.querySelector('input[name="submissionId"], input[id*="submissionId"]');
+                            var params = subInput ? ('?submissionId=' + subInput.value + '&stageId=5') : '?stageId=5';
+                            baseUrl = '/index.php/' + contextPath + '/XMLMetadataBuilder/download' + params;
                         }
 
                         var separator = baseUrl.indexOf('?') === -1 ? '?' : '&';

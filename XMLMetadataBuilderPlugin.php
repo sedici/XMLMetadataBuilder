@@ -137,19 +137,29 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
         // Provide server-generated URLs for auxiliary actions (preview/download)
         // This prevents broken links when JS guesses the contextPath.
         $dispatcher = $request->getDispatcher();
+        
+        $actionArgs = [
+            'submissionId' => $submission->getId(),
+            'stageId' => 5 // WORKFLOW_STAGE_ID_PRODUCTION
+        ];
+
         $templateMgr->assign('xmlEnricherShowFrontUrl', $dispatcher->url(
             $request,
             Application::ROUTE_PAGE,
             $context->getPath(),
             'XMLMetadataBuilder',
-            'showFront'
+            'showFront',
+            null,
+            $actionArgs
         ));
         $templateMgr->assign('xmlEnricherDownloadUrl', $dispatcher->url(
             $request,
             Application::ROUTE_PAGE,
             $context->getPath(),
             'XMLMetadataBuilder',
-            'download'
+            'download',
+            null,
+            $actionArgs
         ));
                 
         // Assign config to template for JS fallback
@@ -330,242 +340,10 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
         $page = $args[0];
         $op = $args[1];
         
-        // Check if this is a showFront request for our plugin
-        if ($page === 'XMLMetadataBuilder' && $op === 'showFront') {
-            $this->handleShowFrontRequest();
-            return true;
-        }
-
-        if ($page === 'XMLMetadataBuilder' && $op === 'download') {
-            $this->handleDownloadRequest();
-            return true;
-        }
-        
-        return false;
-    }
-    
-    /**
-     * Handle AJAX request to show enriched XML front element (Preview)
-     */
-    public function handleShowFrontRequest()
-    {
-        $request = Application::get()->getRequest();
-
-        header('Content-Type: text/plain; charset=utf-8');
-
-        // 1. Require authenticated user
-        $user = $request->getUser();
-        if (!$user) {
-            http_response_code(403);
-            echo 'Error: Acceso denegado';
-            exit;
-        }
-
-        // 2. Validate xmlFileId as a positive integer
-        $xmlFileId = (int) $request->getUserVar('xmlFileId');
-        if ($xmlFileId <= 0) {
-            http_response_code(400);
-            echo 'Error: ID de archivo inválido';
-            exit;
-        }
-
-        // 3. Verify the file exists and belongs to a submission the user can access
-        $file = Repo::submissionFile()->get($xmlFileId);
-        if (!$file) {
-            http_response_code(404);
-            echo 'Error: Archivo no encontrado';
-            exit;
-        }
-
-        if (!$this->userCanAccessSubmission($request, $user, $file->getData('submissionId'))) {
-            http_response_code(403);
-            echo 'Error: No tiene permisos para acceder a este archivo';
-            exit;
-        }
-
-        try {
-            $service = new \APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService();
-
-            // Extract and show the original front element (without enrichment)
-            $frontXml = $service->extractFrontElement($xmlFileId);
-
-            echo $frontXml;
-        } catch (\Exception $e) {
-            http_response_code(500);
-            error_log('[XMLMetadataBuilder] showFront error: ' . $e->getMessage());
-            echo 'Error: No se pudo procesar el archivo XML';
-        }
-
-        exit;
-    }
-
-    /**
-     * Handle file download request - downloads enriched XML and dependent files as ZIP
-     */
-    public function handleDownloadRequest()
-    {
-        $request = Application::get()->getRequest();
-
-        // 1. Require authenticated user
-        $user = $request->getUser();
-        if (!$user) {
-            http_response_code(403);
-            header('Content-Type: text/plain; charset=utf-8');
-            echo 'Error: Acceso denegado';
-            exit;
-        }
-
-        // 2. Validate xmlFileId as a positive integer
-        $xmlFileId = (int) $request->getUserVar('xmlFileId');
-        if ($xmlFileId <= 0) {
-            http_response_code(400);
-            header('Content-Type: text/plain; charset=utf-8');
-            echo 'Error: ID de archivo inválido';
-            exit;
-        }
-
-        try {
-            // Get file info for filename
-            $file = Repo::submissionFile()->get($xmlFileId);
-            if (!$file) {
-                http_response_code(404);
-                header('Content-Type: text/plain; charset=utf-8');
-                echo 'Error: Archivo no encontrado';
-                exit;
-            }
-
-            // 3. Verify the user has access to the submission this file belongs to
-            if (!$this->userCanAccessSubmission($request, $user, $file->getData('submissionId'))) {
-                http_response_code(403);
-                header('Content-Type: text/plain; charset=utf-8');
-                echo 'Error: No tiene permisos para acceder a este archivo';
-                exit;
-            }
-            
-            // Get enriched XML content (in memory, no file created)
-            $service = new \APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService();
-            $enrichedXml = $service->getEnrichedXmlContent((int)$xmlFileId);
-            
-            // Get dependent files
-            $dependentFiles = $service->getDependentFilesPublic((int)$xmlFileId);
-            
-            // Generate base filename
-            $originalFilename = $file->getLocalizedData('name');
-            $baseName = pathinfo($originalFilename, PATHINFO_FILENAME);
-            
-            // If there are no dependent files, just download the XML
-            if (empty($dependentFiles)) {
-                $filename = $baseName . '-enriched.xml';
-                
-                // Set headers for XML download
-                header('Content-Description: File Transfer');
-                header('Content-Type: application/xml');
-                header('Content-Disposition: attachment; filename="' . basename($filename) . '"');
-                header('Expires: 0');
-                header('Cache-Control: must-revalidate');
-                header('Pragma: public');
-                header('Content-Length: ' . strlen($enrichedXml));
-                
-                // Output enriched XML content
-                echo $enrichedXml;
-            } else {
-                // Create ZIP with XML and dependent files
-                $zipFilename = $baseName . '-enriched.zip';
-                $tempZipPath = tempnam(sys_get_temp_dir(), 'xml_download_');
-                
-                // Create ZIP archive
-                $zip = new \ZipArchive();
-                if ($zip->open($tempZipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
-                    throw new \Exception('No se pudo crear el archivo ZIP');
-                }
-                
-                // Add enriched XML to ZIP
-                $xmlFilename = $baseName . '-enriched.xml';
-                $zip->addFromString($xmlFilename, $enrichedXml);
-                
-                // Add dependent files to ZIP
-                foreach ($dependentFiles as $dependentFile) {
-                    $filePath = $service->getFilePathPublic($dependentFile);
-                    if ($filePath && file_exists($filePath)) {
-                        $fileName = $dependentFile->getLocalizedData('name');
-                        $zip->addFile($filePath, $fileName);
-                    }
-                }
-                
-                $zip->close();
-                
-                // Set headers for ZIP download
-                header('Content-Description: File Transfer');
-                header('Content-Type: application/zip');
-                header('Content-Disposition: attachment; filename="' . basename($zipFilename) . '"');
-                header('Expires: 0');
-                header('Cache-Control: must-revalidate');
-                header('Pragma: public');
-                header('Content-Length: ' . filesize($tempZipPath));
-                
-                // Output ZIP file
-                readfile($tempZipPath);
-                
-                // Cleanup temp ZIP file
-                unlink($tempZipPath);
-            }
-            
-        } catch (\Exception $e) {
-            header('Content-Type: text/plain; charset=utf-8');
-            error_log('[XMLMetadataBuilder] download error: ' . $e->getMessage());
-            echo 'Error: No se pudo procesar la descarga';
-        }
-
-        exit;
-    }
-
-    /**
-     * Check whether the current user has access to a given submission.
-     * Works for site admins, journal managers, editors, and assigned participants.
-     *
-     * @param \PKP\core\PKPRequest $request
-     * @param \PKP\user\User $user
-     * @param int $submissionId
-     * @return bool
-     */
-    protected function userCanAccessSubmission($request, $user, $submissionId)
-    {
-        if (!$submissionId) {
-            return false;
-        }
-
-        $submission = Repo::submission()->get((int) $submissionId);
-        if (!$submission) {
-            return false;
-        }
-
-        // Site administrators always have access
-        if ($user->hasRole([
-            \PKP\security\Role::ROLE_ID_SITE_ADMIN
-        ], \PKP\core\PKPApplication::CONTEXT_SITE)) {
-            return true;
-        }
-
-        // Verify the submission belongs to the current context
-        $context = $request->getContext();
-        if (!$context || $submission->getData('contextId') !== $context->getId()) {
-            return false;
-        }
-
-        $contextId = $context->getId();
-
-        // Journal managers and editors have access to all submissions in their journal
-        if ($user->hasRole([
-            \PKP\security\Role::ROLE_ID_MANAGER,
-            \PKP\security\Role::ROLE_ID_SUB_EDITOR,
-        ], $contextId)) {
-            return true;
-        }
-
-        // Check if the user is assigned as a participant to this submission
-        $stageAssignments = \PKP\db\DAORegistry::getDAO('StageAssignmentDAO')
-            ->getBySubmissionAndUserIdAndStageId($submissionId, $user->getId(), null);
-        if ($stageAssignments && !$stageAssignments->wasEmpty()) {
+        if ($page === 'XMLMetadataBuilder' && in_array($op, ['showFront', 'download'])) {
+            define('HANDLER_CLASS', 'XMLMetadataBuilderHandler');
+            define('XML_METADATA_BUILDER_PLUGIN_NAME', $this->getName());
+            require_once($this->getPluginPath() . '/XMLMetadataBuilderHandler.php');
             return true;
         }
 
