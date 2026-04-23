@@ -306,6 +306,7 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
                 ]
             );
         } catch (\Exception $e) {
+            error_log('[XMLMetadataBuilder] Error al enriquecer XML durante la edición de la publicación: ' . $e->getMessage());
         }
         
         return false;

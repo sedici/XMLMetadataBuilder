@@ -196,9 +196,14 @@ class XMLMetadataBuilderHandler extends Handler
                 $zip->addFromString($baseName . '-enriched.xml', $enrichedXml);
 
                 foreach ($dependentFiles as $dependentFile) {
-                    $filePath = $service->getFilePathPublic($dependentFile);
-                    if ($filePath && file_exists($filePath)) {
-                        $zip->addFile($filePath, $dependentFile->getLocalizedData('name'));
+                    try {
+                        $fileContents = $service->readFileContent($dependentFile);
+                        if ($fileContents) {
+                            $zip->addFromString($dependentFile->getLocalizedData('name'), $fileContents);
+                        }
+                    } catch (\Exception $e) {
+                        // Skip file if it can't be read
+                        error_log('[XMLMetadataBuilder] download error (dependent file): ' . $e->getMessage());
                     }
                 }
 

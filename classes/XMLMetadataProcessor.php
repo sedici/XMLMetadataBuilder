@@ -21,8 +21,14 @@ class XMLMetadataProcessor
             $dom = new DOMDocument();
             $dom->preserveWhiteSpace = false;
             $dom->formatOutput = true;
-            if (!$dom->loadXML($xmlOrDom)) {
-                return $xmlOrDom; // cannot parse
+            libxml_use_internal_errors(true);
+            $loaded = $dom->loadXML($xmlOrDom);
+            $errors = libxml_get_errors();
+            libxml_clear_errors();
+            
+            if (!$loaded) {
+                $errorMsg = isset($errors[0]) ? trim($errors[0]->message) : 'XML malformado';
+                throw new \Exception('No se pudo parsear el archivo XML original: ' . $errorMsg);
             }
         }
 

@@ -109,14 +109,7 @@ class EnrichmentService
             throw new \Exception('Submission not found for file: ' . $fileId);
         }
         
-        // Get file path
-        $path = $this->getFilePath($file);
-        if (!$path || !file_exists($path)) {
-            throw new \Exception('Ruta del archivo no encontrada o inexistente');
-        }
-        
-        // Read XML content
-        $contents = file_get_contents($path);
+        $contents = $this->readFileContent($file);
         
         // Get dependent files BEFORE enrichment so we can copy them to new files
         $dependentFiles = $this->getDependentFiles($fileId);
@@ -436,6 +429,40 @@ class EnrichmentService
     }
     
     /**
+     * Read the contents of a SubmissionFile, supporting both Flysystem (OJS 3.4+)
+     * and direct physical file paths as fallback.
+     *
+     * @param SubmissionFile $file
+     * @return string
+     * @throws \Exception
+     */
+    public function readFileContent($file)
+    {
+        $fileService = \APP\core\Services::get('file');
+        $contents = null;
+        
+        try {
+            if (method_exists($fileService, 'read')) {
+                // Read via Flysystem (OJS 3.4+ S3 compatibility)
+                $contents = $fileService->read($file->getData('path'));
+            }
+        } catch (\Exception $e) {
+            // Silently fall back to legacy method if Flysystem read fails
+        }
+
+        if ($contents === null) {
+            $path = $this->getFilePath($file);
+            if (!$path || !file_exists($path)) {
+                throw new \Exception('No se pudo acceder al archivo en el almacenamiento: ' . $file->getId());
+            }
+            // Fallback to direct physical read
+            $contents = file_get_contents($path);
+        }
+        
+        return $contents;
+    }
+    
+    /**
      * Get enriched XML content without saving to file
      * 
      * @param int $fileId ID of the XML file to enrich
@@ -463,14 +490,8 @@ class EnrichmentService
             throw new \Exception('Publicación no encontrada para el submission: ' . $submissionId);
         }
         
-        // Get file path
-        $path = $this->getFilePath($file);
-        if (!$path || !file_exists($path)) {
-            throw new \Exception('Ruta del archivo no encontrada o inexistente');
-        }
-        
         // Read original XML content
-        $contents = file_get_contents($path);
+        $contents = $this->readFileContent($file);
         
         // Enrich the XML using XMLMetadataProcessor
         $enrichedXml = XMLMetadataProcessor::enrichFront($contents, $submission, $publication);
@@ -494,14 +515,8 @@ class EnrichmentService
             throw new \Exception('Archivo no encontrado: ' . $fileId);
         }
         
-        // Get file path
-        $path = $this->getFilePath($file);
-        if (!$path || !file_exists($path)) {
-            throw new \Exception('Ruta del archivo no encontrada o inexistente');
-        }
-        
         // Read XML content
-        $contents = file_get_contents($path);
+        $contents = $this->readFileContent($file);
         
         // Parse XML and extract front element
         $dom = new \DOMDocument();
@@ -591,9 +606,9 @@ class EnrichmentService
                 return null;
             }
             
-            // Get the physical path of the source dependent file
-            $sourcePath = $this->getFilePath($sourceDependentFile);
-            if (!$sourcePath || !file_exists($sourcePath)) {
+            // Read content from source to ensure Flysystem compatibility
+            $sourceContents = $this->readFileContent($sourceDependentFile);
+            if ($sourceContents === null) {
                 return null;
             }
             
@@ -640,9 +655,18 @@ class EnrichmentService
             $uniqueName = $safeBasename . '-' . time() . ($extension ? '.' . $extension : '');
             $newPath = $dir . '/' . $uniqueName;
             
-            // Copy the physical file to storage
-            $fileService = \APP\core\Services::get('file');
-            $uploadedFileId = $fileService->add($sourcePath, $newPath);
+            // Copy the file to storage (use temporary file for Flysystem compatibility)
+            $tempFilePath = tempnam(sys_get_temp_dir(), 'xml_dep_');
+            file_put_contents($tempFilePath, $sourceContents);
+            
+            try {
+                $fileService = \APP\core\Services::get('file');
+                $uploadedFileId = $fileService->add($tempFilePath, $newPath);
+            } finally {
+                if (file_exists($tempFilePath)) {
+                    unlink($tempFilePath);
+                }
+            }
             
             $newDependentFile->setData('fileId', $uploadedFileId);
             $newDependentFile->setData('path', $newPath);

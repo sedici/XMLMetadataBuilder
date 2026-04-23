@@ -252,7 +252,10 @@ class MetadataExtractor
      */
     private function utf8ize($str) {
         if (is_null($str)) return null;
-        if (is_array($str)) return ''; // Should be string
+        if (is_array($str)) {
+            $str = reset($str);
+            if (!is_string($str)) return '';
+        }
         
         // If it's already valid UTF-8, return it
         if (mb_check_encoding($str, 'UTF-8')) {
