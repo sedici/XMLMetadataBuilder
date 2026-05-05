@@ -1,12 +1,7 @@
 <?php
 
-namespace APP\plugins\generic\XMLMetadataBuilder\classes;
-
-use PKP\submission\PKPSubmission;
-use PKP\context\Context;
-use PKP\submission\Genre;
-use PKP\submissionFile\SubmissionFile;
-use PKP\services\PKPAuthorService;
+import('lib.pkp.classes.submission.SubmissionFile');
+import('classes.core.Application');
 
 /**
  * MetadataExtractor
@@ -70,7 +65,8 @@ class MetadataExtractor
         $issueYear = null;
         
         if ($issueId) {
-            $issueObj = \APP\facades\Repo::issue()->get($issueId);
+            $issueDao = DAORegistry::getDAO('IssueDAO');
+            $issueObj = $issueDao->getById($issueId);
             if ($issueObj) {
                 $volume = $issueObj->getVolume();
                 $issue = $issueObj->getNumber();
@@ -111,12 +107,13 @@ class MetadataExtractor
         // Construct article public URL for self-uri element
         $articleUrl = null;
         try {
-            $request = \APP\core\Application::get()->getRequest();
-            if ($request) {
-                $dispatcher = $request->getDispatcher();
+            $request = Application::get()->getRequest();
+            $dispatcher = $request ? $request->getDispatcher() : null;
+            
+            if ($dispatcher) {
                 $articleUrl = $dispatcher->url(
                     $request,
-                    \PKP\core\PKPApplication::ROUTE_PAGE,
+                    ROUTE_PAGE,
                     null,
                     'article',
                     'view',
@@ -124,9 +121,14 @@ class MetadataExtractor
                 );
             }
         } catch (\Throwable $e) {
-            // Fallback: construct URL from DOI if available
-            if ($publication->getDoi()) {
-                $articleUrl = 'https://doi.org/' . $publication->getDoi();
+            error_log('[XMLMetadataBuilder] Error generating article URL: ' . $e->getMessage());
+        }
+
+        // Fallback: construct URL from DOI if available
+        if (empty($articleUrl)) {
+            $doi = $publication->getStoredPubId('doi');
+            if ($doi) {
+                $articleUrl = 'https://doi.org/' . $doi;
             }
         }
         
@@ -134,7 +136,7 @@ class MetadataExtractor
             'title'       => $publication->getData('title') ?? [],        // Array multilingüe: ['es_ES' => 'Título', 'en_US' => 'Title']
             'subtitle'    => $publication->getData('subtitle') ?? [],     // Array multilingüe
             'primaryLocale' => $publication->getData('locale'),           // Idioma principal de la publicación
-            'doi'         => $publication->getDoi(),
+            'doi'         => $publication->getStoredPubId('doi'),
             'abstract'    => $publication->getData('abstract') ?? [],     // Array multilingüe
             'keywords'    => $publication->getData('keywords') ?? [],     // Array multilingüe: ['es_ES' => ['kw1', 'kw2'], 'en_US' => ['kw1', 'kw2']]
             'pages'       => $pages,
@@ -274,7 +276,8 @@ class MetadataExtractor
         $sectionId = $submission->getCurrentPublication()->getData('sectionId');
         if (!$sectionId) return ['title' => null, 'abbrev' => null];
 
-        $section = \APP\facades\Repo::section()->get($sectionId);
+        $sectionDao = DAORegistry::getDAO('SectionDAO');
+        $section = $sectionDao->getById($sectionId);
 
         return [
             'title'     => $section ? $section->getLocalizedTitle() : null,
@@ -291,18 +294,16 @@ class MetadataExtractor
 
         // Get accepted date from editorial decisions
         $acceptedDate = null;
-        $decisions = \APP\facades\Repo::decision()
-            ->getCollector()
-            ->filterBySubmissionIds([$submission->getId()])
-            ->getMany();
+        $editDecisionDao = DAORegistry::getDAO('EditDecisionDAO');
+        $decisions = $editDecisionDao->getEditorDecisions($submission->getId());
 
         foreach ($decisions as $decision) {
-            $stageId = $decision->getData('stageId');
-            $decisionType = $decision->getData('decision');
-            $dateDecided = $decision->getData('dateDecided');
+            $stageId = $decision['stageId'];
+            $decisionType = $decision['decision'];
+            $dateDecided = $decision['dateDecided'];
                         
-            // Review stage (stageId=3) and accepted decision (decision=2 in OJS 3.4)
-            if ($stageId == 3 && $decisionType == 2) {
+            // Review stage (stageId=3) and accepted decision (decision=1 in OJS 3.3)
+            if ($stageId == 3 && $decisionType == 1) {
                 $acceptedDate = $dateDecided;
                 break; // Use first acceptance decision found
             }
@@ -342,16 +343,15 @@ class MetadataExtractor
         $materials = [];
         
         // Get all submission files for this publication
-        $submissionFiles = \APP\facades\Repo::submissionFile()
-            ->getCollector()
-            ->filterBySubmissionIds([$submission->getId()])
-            ->filterByFileStages([\PKP\submissionFile\SubmissionFile::SUBMISSION_FILE_DEPENDENT])
-            ->getMany();
+        $submissionFiles = \Services::get('submissionFile')->getMany([
+            'submissionIds' => [$submission->getId()],
+            'fileStages' => [SUBMISSION_FILE_DEPENDENT]
+        ]);
         
         foreach ($submissionFiles as $file) {
             // Only include files associated with the current publication
-            if ($file->getData('assocType') == \APP\core\Application::ASSOC_TYPE_SUBMISSION_FILE ||
-                $file->getData('assocType') == \APP\core\Application::ASSOC_TYPE_REPRESENTATION) {
+            if ($file->getData('assocType') == ASSOC_TYPE_SUBMISSION_FILE ||
+                $file->getData('assocType') == ASSOC_TYPE_REPRESENTATION) {
                 
                 $materials[] = [
                     'id' => 'supp' . $file->getId(),
@@ -367,4 +367,3 @@ class MetadataExtractor
         return $materials;
     }
 }
-

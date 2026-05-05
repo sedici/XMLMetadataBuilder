@@ -11,19 +11,14 @@
  * @brief Settings form class for the XMLMetadataBuilder plugin.
  */
 
-namespace APP\plugins\generic\XMLMetadataBuilderPlugin;
-
-use APP\core\Application;
-use APP\notification\Notification;
-use APP\notification\NotificationManager;
-use APP\template\TemplateManager;
-use PKP\form\Form;
-use PKP\form\validation\FormValidatorCSRF;
-use PKP\form\validation\FormValidatorPost;
+import('lib.pkp.classes.form.Form');
+import('classes.notification.NotificationManager');
+import('lib.pkp.classes.form.validation.FormValidatorPost');
+import('lib.pkp.classes.form.validation.FormValidatorCSRF');
 
 class XMLMetadataBuilderSettingsForm extends Form {
 
-    public XMLMetadataBuilderPlugin $plugin;
+    public $plugin;
 
     /**
      * Defines the settings form's template and adds
@@ -32,7 +27,7 @@ class XMLMetadataBuilderSettingsForm extends Form {
      * Always add POST and CSRF validation to secure
      * your form.
      */
-    public function __construct(XMLMetadataBuilderPlugin $plugin)
+    public function __construct($plugin)
     {
         parent::__construct($plugin->getTemplateResource('settings.tpl'));
 
@@ -56,7 +51,7 @@ class XMLMetadataBuilderSettingsForm extends Form {
 
         $contextId = $context
             ? $context->getId()
-            : Application::CONTEXT_SITE;
+            : CONTEXT_SITE;
 
         $this->setData(
             'publicationStatement',
@@ -110,7 +105,7 @@ class XMLMetadataBuilderSettingsForm extends Form {
 
         $contextId = $context
             ? $context->getId()
-            : Application::CONTEXT_SITE;
+            : CONTEXT_SITE;
 
         $this->plugin->updateSetting(
             $contextId,
@@ -121,7 +116,7 @@ class XMLMetadataBuilderSettingsForm extends Form {
         $notificationMgr = new NotificationManager();
         $notificationMgr->createTrivialNotification(
             Application::get()->getRequest()->getUser()->getId(),
-            Notification::NOTIFICATION_TYPE_SUCCESS,
+            NOTIFICATION_TYPE_SUCCESS,
             ['contents' => __('common.changesSaved')]
         );
 

@@ -13,14 +13,11 @@
  * DocxConverter plugins. No manual role-checking is needed in action methods.
  */
 
-namespace APP\plugins\generic\XMLMetadataBuilder;
-
-use APP\core\Application;
-use APP\facades\Repo;
-use APP\handler\Handler;
-use PKP\plugins\PluginRegistry;
-use PKP\security\authorization\WorkflowStageAccessPolicy;
-use PKP\security\Role;
+import('classes.handler.Handler');
+import('lib.pkp.classes.security.authorization.WorkflowStageAccessPolicy');
+import('lib.pkp.classes.security.Role');
+import('lib.pkp.classes.plugins.PluginRegistry');
+import('classes.core.Application');
 
 class XMLMetadataBuilderHandler extends Handler
 {
@@ -28,7 +25,7 @@ class XMLMetadataBuilderHandler extends Handler
     public $_isBackendPage = true;
 
     /** @var XMLMetadataBuilderPlugin The plugin instance */
-    protected XMLMetadataBuilderPlugin $_plugin;
+    protected $_plugin;
 
     /**
      * Constructor.
@@ -47,9 +44,9 @@ class XMLMetadataBuilderHandler extends Handler
         // because these actions serve editorial/production workflows.
         $this->addRoleAssignment(
             [
-                Role::ROLE_ID_MANAGER,
-                Role::ROLE_ID_SUB_EDITOR,
-                Role::ROLE_ID_ASSISTANT,
+                ROLE_ID_MANAGER,
+                ROLE_ID_SUB_EDITOR,
+                ROLE_ID_ASSISTANT,
             ],
             ['showFront', 'download']
         );
@@ -63,7 +60,7 @@ class XMLMetadataBuilderHandler extends Handler
      * at the given stageId. This replaces all manual userCanAccessSubmission()
      * logic from the previous implementation.
      */
-    public function authorize($request, &$args, $roleAssignments): bool
+    public function authorize($request, &$args, $roleAssignments)
     {
         $this->addPolicy(new WorkflowStageAccessPolicy(
             $request,
@@ -101,7 +98,7 @@ class XMLMetadataBuilderHandler extends Handler
             exit;
         }
 
-        $file = Repo::submissionFile()->get($xmlFileId);
+        $file = Services::get('submissionFile')->get($xmlFileId);
         if (!$file) {
             http_response_code(404);
             echo 'Error: Archivo no encontrado';
@@ -109,7 +106,7 @@ class XMLMetadataBuilderHandler extends Handler
         }
 
         // Security check: Ensure the requested file belongs to the authorized submission
-        $authorizedSubmission = $this->getAuthorizedContextObject(Application::ASSOC_TYPE_SUBMISSION);
+        $authorizedSubmission = $this->getAuthorizedContextObject(ASSOC_TYPE_SUBMISSION);
         if (!$authorizedSubmission || $file->getData('submissionId') !== $authorizedSubmission->getId()) {
             http_response_code(403);
             echo 'Error: Acceso denegado al archivo';
@@ -117,7 +114,9 @@ class XMLMetadataBuilderHandler extends Handler
         }
 
         try {
-            $service = new \APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService();
+            $plugin = PluginRegistry::getPlugin('generic', XML_METADATA_BUILDER_PLUGIN_NAME);
+            require_once($plugin->getPluginPath() . '/classes/services/EnrichmentService.php');
+            $service = new EnrichmentService();
             echo $service->extractFrontElement($xmlFileId);
         } catch (\Exception $e) {
             http_response_code(500);
@@ -148,7 +147,7 @@ class XMLMetadataBuilderHandler extends Handler
         }
 
         try {
-            $file = Repo::submissionFile()->get($xmlFileId);
+            $file = Services::get('submissionFile')->get($xmlFileId);
             if (!$file) {
                 http_response_code(404);
                 header('Content-Type: text/plain; charset=utf-8');
@@ -157,7 +156,7 @@ class XMLMetadataBuilderHandler extends Handler
             }
 
             // Security check: Ensure the requested file belongs to the authorized submission
-            $authorizedSubmission = $this->getAuthorizedContextObject(Application::ASSOC_TYPE_SUBMISSION);
+            $authorizedSubmission = $this->getAuthorizedContextObject(ASSOC_TYPE_SUBMISSION);
             if (!$authorizedSubmission || $file->getData('submissionId') !== $authorizedSubmission->getId()) {
                 http_response_code(403);
                 header('Content-Type: text/plain; charset=utf-8');
@@ -165,7 +164,9 @@ class XMLMetadataBuilderHandler extends Handler
                 exit;
             }
 
-            $service = new \APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService();
+            $plugin = PluginRegistry::getPlugin('generic', XML_METADATA_BUILDER_PLUGIN_NAME);
+            require_once($plugin->getPluginPath() . '/classes/services/EnrichmentService.php');
+            $service = new EnrichmentService();
             $enrichedXml    = $service->getEnrichedXmlContent($xmlFileId);
             $dependentFiles = $service->getDependentFilesPublic($xmlFileId);
 
@@ -228,9 +229,3 @@ class XMLMetadataBuilderHandler extends Handler
         exit;
     }
 }
-
-/* Backwards compatibility (OJS < 3.4) */
-if (!defined('PKP_STRICT_MODE') || !PKP_STRICT_MODE) {
-    class_alias('\APP\plugins\generic\XMLMetadataBuilder\XMLMetadataBuilderHandler', '\XMLMetadataBuilderHandler');
-}
-

@@ -3,15 +3,7 @@
  * @file plugins/generic/XMLMetadataBuilder/XMLMetadataBuilderPlugin.php
  */
 
-namespace APP\plugins\generic\XMLMetadataBuilder;
-
-use PKP\plugins\GenericPlugin;
-use PKP\plugins\Hook;
-use APP\core\Application;
-use APP\template\TemplateManager;
-use APP\facades\Repo;
-use APP\plugins\generic\XMLMetadataBuilder\classes\XMLMetadataProcessor;
-
+import('lib.pkp.classes.plugins.GenericPlugin');
 
 class XMLMetadataBuilderPlugin extends GenericPlugin
 {
@@ -24,22 +16,22 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
             if ($this->getEnabled($mainContextId)) {
 
                 // Hook into the Publication Workflow to add the tab
-                Hook::add('Template::Workflow::Publication', [$this, 'addToPublicationForms']);
+                HookRegistry::register('Template::Workflow::Publication', [$this, 'addToPublicationForms']);
 
                 // Hook to extend publication schema
-                Hook::add('Schema::get::publication', [$this, 'addToSchema']);
+                HookRegistry::register('Schema::get::publication', [$this, 'addToSchema']);
                 
                 // Hook to validate form submission BEFORE editing
-                Hook::add('Publication::validate', [$this, 'validatePublicationEdit']);
+                HookRegistry::register('Publication::validate', [$this, 'validatePublicationEdit']);
                 
                 // Hook to handle form submission
-                Hook::add('Publication::edit', [$this, 'handlePublicationEdit']);
+                HookRegistry::register('Publication::edit', [$this, 'handlePublicationEdit']);
                 
                 // Hook to handle file deletion (cleanup galleys first)
-                Hook::add('SubmissionFile::delete::before', [$this, 'handleFileDelete']);
+                HookRegistry::register('SubmissionFile::delete::before', [$this, 'handleFileDelete']);
                 
                 // Hook to handle custom AJAX requests
-                Hook::add('LoadHandler', [$this, 'setupHandler']);
+                HookRegistry::register('LoadHandler', [$this, 'setupHandler']);
             
             }
             return true;
@@ -93,7 +85,7 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
         if (!$submission) {
             $submissionId = $request->getUserVar('submissionId');
             if ($submissionId) {
-                $submission = Repo::submission()->get((int) $submissionId);
+                $submission = Services::get('submission')->get((int) $submissionId);
             }
         }
 
@@ -106,7 +98,8 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
         }
 
         // Get production-ready XML files using the centralized Service
-        $xmlFiles = \APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::getProductionXmlFiles($submission->getId());
+        require_once($this->getPluginPath() . '/classes/services/EnrichmentService.php');
+        $xmlFiles = EnrichmentService::getProductionXmlFiles($submission->getId());
 
         // Get context for API URL
         $context = $request->getContext();
@@ -118,10 +111,10 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
 
         // Instantiate the Form Component
         require_once($this->getPluginPath() . '/classes/components/EnrichmentForm.php');
-        $form = new \APP\plugins\generic\XMLMetadataBuilder\classes\components\EnrichmentForm(
+        $form = new EnrichmentForm(
             $request->getDispatcher()->url(
                 $request,
-                Application::ROUTE_API,
+                ROUTE_API,
                 $context->getPath(),
                 'submissions/' . $submission->getId() . '/publications/' . $publication->getId()
             ),
@@ -145,7 +138,7 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
 
         $templateMgr->assign('xmlEnricherShowFrontUrl', $dispatcher->url(
             $request,
-            Application::ROUTE_PAGE,
+            ROUTE_PAGE,
             $context->getPath(),
             'XMLMetadataBuilder',
             'showFront',
@@ -154,7 +147,7 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
         ));
         $templateMgr->assign('xmlEnricherDownloadUrl', $dispatcher->url(
             $request,
-            Application::ROUTE_PAGE,
+            ROUTE_PAGE,
             $context->getPath(),
             'XMLMetadataBuilder',
             'download',
@@ -194,8 +187,10 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
     {
         $schema = $args[0];
         
+        require_once($this->getPluginPath() . '/classes/services/EnrichmentService.php');
+        
         // Add custom property for XML file ID (multilingual to support different files per locale)
-        $schema->properties->{\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_XML_FILE_ID} = (object) [
+        $schema->properties->{EnrichmentService::SETTING_XML_FILE_ID} = (object) [
             'type' => 'integer',
             'multilingual' => false,
             'apiSummary' => true,
@@ -203,7 +198,7 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
         ];
         
         // Add custom property for suffix
-        $schema->properties->{\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_SUFFIX} = (object) [
+        $schema->properties->{EnrichmentService::SETTING_SUFFIX} = (object) [
             'type' => 'string',
             'multilingual' => false,
             'apiSummary' => true,
@@ -211,7 +206,7 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
         ];
         
         // Add custom property for overwrite flag
-        $schema->properties->{\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_OVERWRITE} = (object) [
+        $schema->properties->{EnrichmentService::SETTING_OVERWRITE} = (object) [
             'type' => 'boolean',
             'multilingual' => false,
             'apiSummary' => true,
@@ -219,7 +214,7 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
         ];
         
         // Add custom property for createGalley flag
-        $schema->properties->{\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_CREATE_GALLEY} = (object) [
+        $schema->properties->{EnrichmentService::SETTING_CREATE_GALLEY} = (object) [
             'type' => 'boolean',
             'multilingual' => false,
             'apiSummary' => true,
@@ -238,21 +233,23 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
         $errors = &$args[0];
         $props = $args[2];
         
+        require_once($this->getPluginPath() . '/classes/services/EnrichmentService.php');
+        
         // Only validate if our custom field is being submitted
-        if (!array_key_exists(\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_XML_FILE_ID, $props)) {
+        if (!array_key_exists(EnrichmentService::SETTING_XML_FILE_ID, $props)) {
             return false;
         }
         
-        $xmlFileId = $props[\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_XML_FILE_ID] ?? null;
+        $xmlFileId = $props[EnrichmentService::SETTING_XML_FILE_ID] ?? null;
         
         // Check if xmlFileId is empty
         if (empty($xmlFileId) || $xmlFileId === null) {
             
             // Add error to the errors array
-            if (!isset($errors[\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_XML_FILE_ID])) {
-                $errors[\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_XML_FILE_ID] = [];
+            if (!isset($errors[EnrichmentService::SETTING_XML_FILE_ID])) {
+                $errors[EnrichmentService::SETTING_XML_FILE_ID] = [];
             }
-            $errors[\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_XML_FILE_ID][] = __('plugins.generic.XMLMetadataBuilder.noFileSelected');
+            $errors[EnrichmentService::SETTING_XML_FILE_ID][] = __('plugins.generic.XMLMetadataBuilder.noFileSelected');
         }
         
         return false;
@@ -267,24 +264,26 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
         $newPublication = $args[0];
         $params = $args[2];
         
+        require_once($this->getPluginPath() . '/classes/services/EnrichmentService.php');
+        
         // Check if our custom fields are present in the params
-        if (!array_key_exists(\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_XML_FILE_ID, $params)) {
+        if (!array_key_exists(EnrichmentService::SETTING_XML_FILE_ID, $params)) {
             return false;
         }
         
         // Get the file ID, suffix, overwrite flag, and createGalley flag
-        $xmlFileId = $params[\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_XML_FILE_ID] ?? null;
-        $suffix = $params[\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_SUFFIX] ?? \APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::DEFAULT_SUFFIX;
-        $overwrite = $params[\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_OVERWRITE] ?? false;
-        $createGalley = $params[\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_CREATE_GALLEY] ?? true;
+        $xmlFileId = $params[EnrichmentService::SETTING_XML_FILE_ID] ?? null;
+        $suffix = $params[EnrichmentService::SETTING_SUFFIX] ?? EnrichmentService::DEFAULT_SUFFIX;
+        $overwrite = $params[EnrichmentService::SETTING_OVERWRITE] ?? false;
+        $createGalley = $params[EnrichmentService::SETTING_CREATE_GALLEY] ?? true;
         
         // Handle suffix if it comes as array (multilingual field)
         if (is_array($suffix)) {
-            $suffix = reset($suffix) ?: \APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::DEFAULT_SUFFIX;
+            $suffix = reset($suffix) ?: EnrichmentService::DEFAULT_SUFFIX;
         }
         // Handle empty string
         if (empty($suffix) || trim($suffix) === '') {
-            $suffix = \APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::DEFAULT_SUFFIX;
+            $suffix = EnrichmentService::DEFAULT_SUFFIX;
         }
 
         // Skip if no file is selected (validation already done in validate hook)
@@ -293,7 +292,7 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
         }
         
         // Delegate to EnrichmentService
-        $service = new \APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService();
+        $service = new EnrichmentService();
         
         try {
             $service->enrich(
@@ -325,7 +324,8 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
         }
         
         // First, delete associated galleys
-        $service = new \APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService();
+        require_once($this->getPluginPath() . '/classes/services/EnrichmentService.php');
+        $service = new EnrichmentService();
         $service->deleteGalleys($submissionFile->getId());
         
         // Return false to allow OJS to continue with the file deletion
@@ -351,9 +351,4 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
         return false;
     }
 
-}
-
-/* Backwards compatibility (OJS < 3.4) */
-if (!defined('PKP_STRICT_MODE') || !PKP_STRICT_MODE) {
-    class_alias('\APP\plugins\generic\XMLMetadataBuilder\XMLMetadataBuilderPlugin', '\XMLMetadataBuilderPlugin');
 }

@@ -1,10 +1,6 @@
 <?php
 
-namespace APP\plugins\generic\XMLMetadataBuilder\classes;
-
-use DOMDocument;
-use DOMElement;
-use APP\plugins\generic\XMLMetadataBuilder\classes\CountryMapper\CountryMapper;
+require_once dirname(__FILE__) . '/CountryMapper/CountryMapper.php';
 
 class JATSBuilder
 {
@@ -544,7 +540,14 @@ class JATSBuilder
         $group = $this->el('contrib-group');
 
         foreach ($authors as $a) {
-            $contrib = $this->elAttr('contrib', ['contrib-type' => 'author']);
+            $contribAttrs = ['contrib-type' => 'author'];
+            
+            // Add corresp="yes" for corresponding author (SPS requirement)
+            if (!empty($a['isPrimary'])) {
+                $contribAttrs['corresp'] = 'yes';
+            }
+            
+            $contrib = $this->elAttr('contrib', $contribAttrs);
 
             // DTD REQUIRED ORDER: contrib-id must come BEFORE name
             // Add ORCID if available (must be first)

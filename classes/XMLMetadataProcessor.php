@@ -1,10 +1,5 @@
 <?php
-namespace APP\plugins\generic\XMLMetadataBuilder\classes;
-
-use DOMDocument;
-use APP\plugins\generic\XMLMetadataBuilder\classes\JATSBuilder;
-use APP\plugins\generic\XMLMetadataBuilder\classes\MetadataExtractor;
-use APP\core\Application;
+import('classes.core.Application');
 
 class XMLMetadataProcessor
 {
@@ -43,6 +38,7 @@ class XMLMetadataProcessor
         }
 
         // Extract metadata from OJS using existing extractor
+        require_once dirname(__FILE__) . '/MetadataExtractor.php';
         $extractor = new MetadataExtractor();
         $meta = $extractor->extract($submission, $context);
 
@@ -127,6 +123,7 @@ class XMLMetadataProcessor
         $builderMeta['countsElement'] = $countsElement;
         
         // Build <front> with JATSBuilder
+        require_once dirname(__FILE__) . '/JATSBuilder.php';
         $builder = new JATSBuilder();
         $frontNode = $builder->buildFront($builderMeta); // returns DOMElement
         

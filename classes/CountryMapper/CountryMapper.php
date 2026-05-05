@@ -1,6 +1,5 @@
 <?php
 
-namespace APP\plugins\generic\XMLMetadataBuilder\classes\CountryMapper;
 
 /**
  * Service class to map country names to ISO 3166-1 alpha-2 codes
