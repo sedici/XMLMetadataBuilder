@@ -104,6 +104,17 @@ class MetadataExtractor
             }
         }
         
+
+        // DOI extraction with fallback
+        $doi = $publication->getStoredPubId('doi');
+        if (empty($doi)) {
+            // Fallback: look into 'source' field (common for manual entry)
+            $source = $publication->getLocalizedData('source');
+            if (!empty($source) && preg_match('/10\.\d{4,9}\/[-._;()\/:\w]+/', $source, $matches)) {
+                $doi = $matches[0];
+            }
+        }
+
         // Construct article public URL for self-uri element
         $articleUrl = null;
         try {
@@ -125,18 +136,15 @@ class MetadataExtractor
         }
 
         // Fallback: construct URL from DOI if available
-        if (empty($articleUrl)) {
-            $doi = $publication->getStoredPubId('doi');
-            if ($doi) {
-                $articleUrl = 'https://doi.org/' . $doi;
-            }
+        if (empty($articleUrl) && !empty($doi)) {
+            $articleUrl = 'https://doi.org/' . $doi;
         }
         
         return [
             'title'       => $publication->getData('title') ?? [],        // Array multilingüe: ['es_ES' => 'Título', 'en_US' => 'Title']
             'subtitle'    => $publication->getData('subtitle') ?? [],     // Array multilingüe
             'primaryLocale' => $publication->getData('locale'),           // Idioma principal de la publicación
-            'doi'         => $publication->getStoredPubId('doi'),
+            'doi'         => $doi,
             'abstract'    => $publication->getData('abstract') ?? [],     // Array multilingüe
             'keywords'    => $publication->getData('keywords') ?? [],     // Array multilingüe: ['es_ES' => ['kw1', 'kw2'], 'en_US' => ['kw1', 'kw2']]
             'pages'       => $pages,
