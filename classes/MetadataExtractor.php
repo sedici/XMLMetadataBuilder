@@ -20,7 +20,7 @@ class MetadataExtractor
     /**
      * Punto de entrada principal
      */
-    public function extract(PKPSubmission $submission, Context $context): array
+    public function extract(PKPSubmission $submission, Context $context, $parentFileId = null): array
     {        
         $authors = $this->extractAuthors($submission);
         $affiliations = $this->processAffiliations($authors);
@@ -33,7 +33,7 @@ class MetadataExtractor
             'sections'    => $this->extractSections($submission, $context),
             'pubDates'    => $this->extractPublicationDates($submission),
             'permissions' => $this->extractPermissions($submission),
-            'supplementaryMaterials' => $this->extractSupplementaryMaterials($submission),
+            'supplementaryMaterials' => $this->extractSupplementaryMaterials($submission, $parentFileId),
         ];
 
         return $result;
@@ -336,7 +336,7 @@ class MetadataExtractor
      * Extract supplementary/dependent files from submission
      * These are additional files attached to the article (datasets, code, images, etc.)
      */
-    protected function extractSupplementaryMaterials(PKPSubmission $submission): array
+    protected function extractSupplementaryMaterials(PKPSubmission $submission, $parentFileId = null): array
     {
         $publication = $submission->getCurrentPublication();
         $materials = [];
@@ -349,13 +349,31 @@ class MetadataExtractor
             ->getMany();
         
         foreach ($submissionFiles as $file) {
-            // Only include files associated with the current publication
-            if ($file->getData('assocType') == \APP\core\Application::ASSOC_TYPE_SUBMISSION_FILE ||
-                $file->getData('assocType') == \APP\core\Application::ASSOC_TYPE_REPRESENTATION) {
+            $assocType = $file->getData('assocType');
+            $assocId = $file->getData('assocId');
+
+            // If a parent file is specified, prioritize files associated with it.
+            // However, we also allow files associated with the representation (galley).
+            // The main goal here is to avoid picking up files from *other* XML versions.
+            if ($parentFileId && $assocType == \APP\core\Application::ASSOC_TYPE_SUBMISSION_FILE && $assocId != $parentFileId) {
+                continue;
+            }
+
+            // Only include files associated with the current publication or specific submission file
+            if ($assocType == \APP\core\Application::ASSOC_TYPE_SUBMISSION_FILE ||
+                $assocType == \APP\core\Application::ASSOC_TYPE_REPRESENTATION) {
+
+                $label = $file->getLocalizedData('name') ?: 'Supplementary File ' . $file->getId();
                 
-                $materials[] = [
+                // Deduplicate by label to avoid repeating the same file multiple times 
+                // (common when enrichment is run multiple times without cleanup)
+                if (isset($materials[$label])) {
+                    continue;
+                }
+
+                $materials[$label] = [
                     'id' => 'supp' . $file->getId(),
-                    'label' => $file->getLocalizedData('name') ?: 'Supplementary File ' . $file->getId(),
+                    'label' => $label,
                     'caption' => $file->getLocalizedData('description'),
                     'mimetype' => $file->getData('mimetype'),
                     'href' => $file->getData('path'),
@@ -363,8 +381,8 @@ class MetadataExtractor
                 ];
             }
         }
-        
-        return $materials;
+
+        return array_values($materials);
     }
 }
 

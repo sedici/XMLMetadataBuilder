@@ -116,7 +116,7 @@ class EnrichmentService
         $dependentFileCount = count($dependentFiles);
         
         // Enrich the XML using PluginMetadataProcessor
-        $newXml = XMLMetadataProcessor::enrichFront($contents, $submission, $publication);
+        $newXml = XMLMetadataProcessor::enrichFront($contents, $submission, $publication, null, $fileId);
         
         // Create temporary file
         $tempFilePath = tempnam(sys_get_temp_dir(), 'xml_enricher_');
@@ -494,7 +494,7 @@ class EnrichmentService
         $contents = $this->readFileContent($file);
         
         // Enrich the XML using XMLMetadataProcessor
-        $enrichedXml = XMLMetadataProcessor::enrichFront($contents, $submission, $publication);
+        $enrichedXml = XMLMetadataProcessor::enrichFront($contents, $submission, $publication, null, $fileId);
         
         return $enrichedXml;
     }
