@@ -83,7 +83,7 @@ class EnrichmentService
         $dependentFiles = $this->getDependentFiles($fileId);
         
         require_once dirname(__FILE__) . '/../XMLMetadataProcessor.php';
-        $newXml = XMLMetadataProcessor::enrichFront($contents, $submission, $publication);
+        $newXml = XMLMetadataProcessor::enrichFront($contents, $submission, $publication, null, $fileId);
         
         $tempFilePath = tempnam(sys_get_temp_dir(), 'xml_enricher_');
         try {
@@ -273,7 +273,7 @@ class EnrichmentService
         $contents = $this->readFileContent($file);
         
         require_once dirname(__FILE__) . '/../XMLMetadataProcessor.php';
-        return XMLMetadataProcessor::enrichFront($contents, $submission, $publication);
+        return XMLMetadataProcessor::enrichFront($contents, $submission, $publication, null, $fileId);
     }
     
     public function extractFrontElement($fileId)
