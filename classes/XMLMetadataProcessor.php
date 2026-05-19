@@ -12,7 +12,7 @@ class XMLMetadataProcessor
      * Enrich front section of a JATS XML.
      * Accepts string XML or DOMDocument and returns XML string.
      */
-    public static function enrichFront($xmlOrDom, $submission = null, $publication = null, $context = null)
+    public static function enrichFront($xmlOrDom, $submission = null, $publication = null, $context = null, $parentFileId = null)
     {
         // Load DOM
         if ($xmlOrDom instanceof DOMDocument) {
@@ -44,7 +44,7 @@ class XMLMetadataProcessor
 
         // Extract metadata from OJS using existing extractor
         $extractor = new MetadataExtractor();
-        $meta = $extractor->extract($submission, $context);
+        $meta = $extractor->extract($submission, $context, $parentFileId);
 
         // Map extractor output to JATSBuilder format
         $builderMeta = [
