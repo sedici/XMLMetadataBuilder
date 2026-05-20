@@ -1,0 +1,78 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2020-11-27T16:21:26+00:00\n"
+"PO-Revision-Date: 2020-11-27T16:21:26+00:00\n"
+"Language: \n"
+
+msgid "plugins.generic.XMLMetadataBuilder.displayName"
+msgstr "XMLMetadataBuilder"
+
+msgid "plugins.generic.XMLMetadataBuilder.description"
+msgstr "Enriquece archivos XML JATS con metadatos de publicaciones para mejorar su contenido y estructura."
+
+msgid "plugins.generic.XMLMetadataBuilder.publicationStatement"
+msgstr "Declaración de Publicación"
+
+msgid "plugins.generic.XMLMetadataBuilder.publicationStatement.description"
+msgstr "Agregue una declaración de publicación que desea que aparezca en la página de destino de cada publicación."
+
+msgid "plugins.generic.XMLMetadataBuilder.publication.jats.fulltext"
+msgstr "Enriquecedor XML"
+
+msgid "plugins.generic.XMLMetadataBuilder.publication.jats.description"
+msgstr "Seleccione un archivo XML de producción para enriquecerlo con metadatos del envío. Se generará un nuevo archivo XML enriquecido."
+
+msgid "plugins.generic.XMLMetadataBuilder.suffix"
+msgstr "Sufijo del archivo"
+
+msgid "plugins.generic.XMLMetadataBuilder.suffixDescription"
+msgstr "Sufijo que se agregará al nombre del nuevo archivo XML enriquecido (por ejemplo, con '-enriched' el archivo 'articulo.xml' se guardará como 'articulo-enriched.xml')"
+
+msgid "plugins.generic.XMLMetadataBuilder.publication.jats.showFront"
+msgstr "Mostrar Front"
+
+msgid "plugins.generic.XMLMetadataBuilder.publication.jats.generate"
+msgstr "Generar XML Enriquecido"
+
+msgid "plugins.generic.XMLMetadataBuilder.publication.jats.download"
+msgstr "Descargar"
+
+msgid "plugins.generic.XMLMetadataBuilder.noXmlFiles"
+msgstr "No se encontraron archivos XML en los archivos listos para producción."
+
+msgid "plugins.generic.XMLMetadataBuilder.selectXmlFile"
+msgstr "Seleccionar archivo XML"
+
+msgid "plugins.generic.XMLMetadataBuilder.selectXmlFile.description"
+msgstr "Elija un archivo XML de los archivos listos para producción para enriquecer."
+
+msgid "plugins.generic.XMLMetadataBuilder.overwrite"
+msgstr "Sobrescribir"
+
+msgid "plugins.generic.XMLMetadataBuilder.overwrite.confirm"
+msgstr "Sobrescribir el archivo existente en lugar de crear uno nuevo"
+
+msgid "plugins.generic.XMLMetadataBuilder.enrichmentSuccessNewFile"
+msgstr "¡Archivo XML enriquecido generado exitosamente!"
+
+msgid "plugins.generic.XMLMetadataBuilder.enrichmentError"
+msgstr "Error al enriquecer el archivo XML"
+
+msgid "plugins.generic.XMLMetadataBuilder.noFileSelected"
+msgstr "Por favor, seleccione un archivo XML antes de continuar"
+
+msgid "plugins.generic.XMLMetadataBuilder.fileNotFound"
+msgstr "El archivo seleccionado no fue encontrado"
+
+msgid "plugins.generic.XMLMetadataBuilder.createGalley"
+msgstr "Enviar a Galeradas"
+
+msgid "plugins.generic.XMLMetadataBuilder.createGalley.confirm"
+msgstr "Crear una copia en Galeradas (si no se marca, solo se creará el archivo en Producción)"
