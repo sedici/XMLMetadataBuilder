@@ -106,21 +106,14 @@ class XMLMetadataProcessor
             'supplementaryMaterials' => $meta['supplementaryMaterials'] ?? [],
         ];
         
-        // Extract and preserve <counts> from original XML if it exists
-        // This preserves fig-count, table-count, ref-count, etc. from SciELO XMLs
-        $countsElement = null;
-        $oldFronts = $dom->getElementsByTagName('front');
-        if ($oldFronts->length) {
-            $oldFront = $oldFronts->item(0);
-            $countsNodes = $oldFront->getElementsByTagName('counts');
-            if ($countsNodes->length) {
-                // Clone the counts element to preserve it
-                $countsElement = $countsNodes->item(0)->cloneNode(true);
-            }
-        }
-        
-        // Pass counts element to builder
-        $builderMeta['countsElement'] = $countsElement;
+        // Calculate counts dynamically from the document instead of preserving old ones
+        $builderMeta['counts'] = [
+            'fig-count' => $dom->getElementsByTagName('fig')->length,
+            'table-count' => $dom->getElementsByTagName('table-wrap')->length,
+            'equation-count' => $dom->getElementsByTagName('disp-formula')->length,
+            'ref-count' => $dom->getElementsByTagName('ref')->length,
+            'page-count' => 1,
+        ];
         
         // Build <front> with JATSBuilder
         require_once dirname(__FILE__) . '/JATSBuilder.php';

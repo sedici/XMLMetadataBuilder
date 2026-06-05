@@ -460,7 +460,18 @@ class JATSBuilder
             $articleMeta->appendChild($importedCounts);
         }
 
-        // 15. custom-meta-group (last)
+        // 15. counts (MUST come before custom-meta-group)
+        if (isset($metadata['counts'])) {
+            $counts = $this->el('counts');
+            $counts->appendChild($this->elAttr('fig-count', ['count' => (string) $metadata['counts']['fig-count']]));
+            $counts->appendChild($this->elAttr('table-count', ['count' => (string) $metadata['counts']['table-count']]));
+            $counts->appendChild($this->elAttr('equation-count', ['count' => (string) $metadata['counts']['equation-count']]));
+            $counts->appendChild($this->elAttr('ref-count', ['count' => (string) $metadata['counts']['ref-count']]));
+            $counts->appendChild($this->elAttr('page-count', ['count' => (string) $metadata['counts']['page-count']]));
+            $articleMeta->appendChild($counts);
+        }
+
+        // 16. custom-meta-group (last)
         if (!empty($metadata['custom'])) {
             $articleMeta->appendChild(
                 $this->buildCustomMetaGroup($metadata['custom'])
