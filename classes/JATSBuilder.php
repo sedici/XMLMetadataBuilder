@@ -452,15 +452,7 @@ class JATSBuilder
             $articleMeta->appendChild($kwdGroup);
         }
 
-        // 14. counts (preserved from original XML if available, MUST come before custom-meta-group)
-        // This preserves fig-count, table-count, ref-count, etc. from source XMLs like SciELO
-        if (!empty($metadata['countsElement']) && $metadata['countsElement'] instanceof \DOMElement) {
-            // Import the counts element from the old DOM into this builder's DOM
-            $importedCounts = $this->doc->importNode($metadata['countsElement'], true);
-            $articleMeta->appendChild($importedCounts);
-        }
-
-        // 15. counts (MUST come before custom-meta-group)
+        // 14. counts (MUST come before custom-meta-group)
         if (isset($metadata['counts'])) {
             $counts = $this->el('counts');
             $counts->appendChild($this->elAttr('fig-count', ['count' => (string) $metadata['counts']['fig-count']]));
