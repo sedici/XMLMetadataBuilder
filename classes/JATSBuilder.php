@@ -459,7 +459,9 @@ class JATSBuilder
             $counts->appendChild($this->elAttr('table-count', ['count' => (string) $metadata['counts']['table-count']]));
             $counts->appendChild($this->elAttr('equation-count', ['count' => (string) $metadata['counts']['equation-count']]));
             $counts->appendChild($this->elAttr('ref-count', ['count' => (string) $metadata['counts']['ref-count']]));
-            $counts->appendChild($this->elAttr('page-count', ['count' => (string) $metadata['counts']['page-count']]));
+            if (isset($metadata['counts']['page-count'])) {
+                $counts->appendChild($this->elAttr('page-count', ['count' => (string) $metadata['counts']['page-count']]));
+            }
             $articleMeta->appendChild($counts);
         }
 
