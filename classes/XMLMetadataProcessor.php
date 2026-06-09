@@ -111,13 +111,26 @@ class XMLMetadataProcessor
         ];
         
         // Calculate counts dynamically from the document instead of preserving old ones
-        $builderMeta['counts'] = [
+        $counts = [
             'fig-count' => $dom->getElementsByTagName('fig')->length,
             'table-count' => $dom->getElementsByTagName('table-wrap')->length,
             'equation-count' => $dom->getElementsByTagName('disp-formula')->length,
             'ref-count' => $dom->getElementsByTagName('ref')->length,
-            'page-count' => 1,
         ];
+
+        // An article is electronic if it has an elocation-id.
+        // Electronic-only articles do not have a page-count.
+        // Otherwise, page-count is calculated as the difference (inclusive) between lastPage and firstPage.
+        $isElectronic = !empty($builderMeta['elocationId']);
+        if (!$isElectronic) {
+            $firstPage = $builderMeta['firstPage'];
+            $lastPage = $builderMeta['lastPage'];
+            if ($firstPage !== null && $lastPage !== null && is_numeric($firstPage) && is_numeric($lastPage)) {
+                $counts['page-count'] = (int)$lastPage - (int)$firstPage + 1;
+            }
+        }
+
+        $builderMeta['counts'] = $counts;
         
         // Build <front> with JATSBuilder
         $builder = new JATSBuilder();
