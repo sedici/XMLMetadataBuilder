@@ -620,10 +620,21 @@ class EnrichmentService
             $newDependentFile->setData('mimetype', $sourceDependentFile->getData('mimetype'));
             $newDependentFile->setUploaderUserId($uploaderUserId);
             
-            // Copy localized name from source
-            $locale = $sourceDependentFile->getData('locale') ?: 'en';
-            $originalName = $sourceDependentFile->getLocalizedData('name');
-            $newDependentFile->setData('name', $originalName, $locale);
+            // Copy localized name and description from source
+            $nameData = $sourceDependentFile->getData('name');
+            if (is_array($nameData)) {
+                $newDependentFile->setData('name', $nameData);
+            } else {
+                $locale = $newParentFile->getData('locale') ?: ($sourceDependentFile->getData('locale') ?: 'en');
+                $newDependentFile->setData('name', $sourceDependentFile->getLocalizedData('name'), $locale);
+            }
+            
+            $descData = $sourceDependentFile->getData('description');
+            if (!empty($descData)) {
+                $newDependentFile->setData('description', $descData);
+            }
+
+            $originalName = $sourceDependentFile->getLocalizedData('name') ?: 'dependent';
             
             // Set timestamps
             $now = \PKP\core\Core::getCurrentDate();

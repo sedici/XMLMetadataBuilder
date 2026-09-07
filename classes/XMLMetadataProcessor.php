@@ -163,7 +163,33 @@ class XMLMetadataProcessor
             }
         }
 
+        // Normalize URIs in href and xlink:href attributes across the entire document
+        self::normalizeUris($dom);
+
         $result = $dom->saveXML();
         return $result;
+    }
+
+    /**
+     * Normalizes URIs in href and xlink:href attributes across the XML document.
+     * Replaces spaces with %20 to ensure valid URI syntax (RFC 3986) and compatibility
+     * with viewers and plugins (e.g., LensGalley, JatsParser).
+     *
+     * @param DOMDocument $dom
+     * @return void
+     */
+    public static function normalizeUris(DOMDocument $dom): void
+    {
+        $xpath = new \DOMXPath($dom);
+        // Select all attributes named 'href' in any namespace (e.g., href, xlink:href)
+        $hrefAttributes = $xpath->query('//@*[local-name()="href"]');
+        if ($hrefAttributes) {
+            foreach ($hrefAttributes as $attr) {
+                $val = trim($attr->nodeValue);
+                if ($val !== '' && strpos($val, ' ') !== false) {
+                    $attr->nodeValue = str_replace(' ', '%20', $val);
+                }
+            }
+        }
     }
 }
