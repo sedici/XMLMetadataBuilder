@@ -141,7 +141,7 @@ graph TD
 | **Integración** | `PluginTemplatePlugin` | Hooks de OJS, configuración |
 | **Servicios** | `EnrichmentService` | Lógica de negocio, orquestación |
 | **Procesamiento** | `PluginMetadataProcessor`<br>`MetadataExtractor`<br>`JATSBuilder` | Transformación XML, extracción de datos |
-| **Presentación** | `EnrichmentForm`<br>`enricherForm.tpl`<br>`enricherForm.js` | Interfaz de usuario, formularios |
+| **Presentación** | `EnrichmentForm`<br>`enricherForm.tpl` | FormComponent nativo de OJS, plantilla Smarty |
 
 ---
 
@@ -210,15 +210,7 @@ XML String → DOM → MetadataExtractor → JATSBuilder → DOM Manipulation �
 **Componente de formulario Vue**. Define estructura del formulario usando FormComponent de OJS.
 
 #### 7. enricherForm.tpl
-**Template Smarty**. Renderiza el tab del plugin con Vue component.
-
-#### 8. enricherForm.js
-**Módulo JavaScript**. Maneja lógica de UI, manipulación DOM, y preview AJAX.
-
-**Funciones**:
-- `injectVueConfig()` - Inyecta configuración en Vue state
-- `convertSuffixToFieldset()` - Ajustes de estilo
-- `setupShowFrontButton()` - Configura preview del front
+**Template Smarty**. Renderiza el tab del plugin con el componente Vue `<pkp-form>` nativo de OJS y las acciones auxiliares (modal AJAX y descarga directa).
 
 ---
 
@@ -409,9 +401,7 @@ pluginTemplate/
 │   └── services/
 │       └── EnrichmentService.php    # Servicio principal
 ├── templates/
-│   ├── enricherForm.tpl             # Template formulario
-│   └── js/
-│       └── enricherForm.js          # Lógica JavaScript
+│   └── enricherForm.tpl             # Template formulario nativo
 ├── locale/
 │   └── es/
 │       └── locale.po                # Traducciones español

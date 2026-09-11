@@ -81,20 +81,34 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
      */
     public function addToPublicationForms($hookName, $params)
     {   
-        $smartyParams = $params[0];
+        $smartyParams = $params[0] ?? [];
+        $smartyTemplate = $params[1] ?? null;
         $output = &$params[2];
 
         $request = Application::get()->getRequest();
         $templateMgr = TemplateManager::getManager($request);
 
-        $submission = $templateMgr->getTemplateVars('submission');
-        $publication = $templateMgr->getTemplateVars('publication');
+        $submission = null;
+        if ($smartyTemplate && method_exists($smartyTemplate, 'getTemplateVars')) {
+            $submission = $smartyTemplate->getTemplateVars('submission');
+        }
+        if (!$submission) {
+            $submission = $templateMgr->getTemplateVars('submission');
+        }
 
         if (!$submission) {
             $submissionId = $request->getUserVar('submissionId');
             if ($submissionId) {
                 $submission = Repo::submission()->get((int) $submissionId);
             }
+        }
+
+        $publication = null;
+        if ($smartyTemplate && method_exists($smartyTemplate, 'getTemplateVars')) {
+            $publication = $smartyTemplate->getTemplateVars('publication');
+        }
+        if (!$publication) {
+            $publication = $templateMgr->getTemplateVars('publication');
         }
 
         if ($submission && !$publication) {
@@ -143,7 +157,7 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
             'stageId' => 5 // WORKFLOW_STAGE_ID_PRODUCTION
         ];
 
-        $templateMgr->assign('xmlEnricherShowFrontUrl', $dispatcher->url(
+        $showFrontUrl = $dispatcher->url(
             $request,
             Application::ROUTE_PAGE,
             $context->getPath(),
@@ -151,8 +165,8 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
             'showFront',
             null,
             $actionArgs
-        ));
-        $templateMgr->assign('xmlEnricherDownloadUrl', $dispatcher->url(
+        );
+        $downloadUrl = $dispatcher->url(
             $request,
             Application::ROUTE_PAGE,
             $context->getPath(),
@@ -160,16 +174,23 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
             'download',
             null,
             $actionArgs
-        ));
-                
-        // Assign config to template for JS fallback
-        $templateMgr->assign('xmlEnricherConfig', $formConfig);
+        );
+        $xmlFileIdFieldName = \APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_XML_FILE_ID;
 
-        // Inyectar en UI (JATSParser pattern)
-        $state = $templateMgr->getTemplateVars('state');
+        // Inject into state for WorkflowPage
+        $state = null;
+        if ($smartyTemplate && method_exists($smartyTemplate, 'getTemplateVars')) {
+            $state = $smartyTemplate->getTemplateVars('state');
+        }
+        if (!$state) {
+            $state = $templateMgr->getTemplateVars('state');
+        }
+
+        error_log('[XMLMetadataBuilder] addToPublicationForms called. State is null? ' . ($state === null ? 'yes' : 'no'));
+        error_log('[XMLMetadataBuilder] Existing state components: ' . json_encode(array_keys($state['components'] ?? [])));
+        
         $state['components'][$componentId] = $formConfig;
         
-        // Add to publicationFormIds if not already present
         if (!isset($state['publicationFormIds'])) {
             $state['publicationFormIds'] = [];
         }
@@ -177,10 +198,32 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
             $state['publicationFormIds'][] = $componentId;
         }
 
-        $templateMgr->assign('state', $state);
+        // Assign to both active template ($smartyTemplate) and TemplateManager
+        $varsToAssign = [
+            'state' => $state,
+            'xmlEnricherConfig' => $formConfig,
+            'xmlEnricherShowFrontUrl' => $showFrontUrl,
+            'xmlEnricherDownloadUrl' => $downloadUrl,
+            'xmlFileIdFieldName' => $xmlFileIdFieldName,
+        ];
+
+        if ($smartyTemplate && method_exists($smartyTemplate, 'assign')) {
+            foreach ($varsToAssign as $key => $val) {
+                $smartyTemplate->assign($key, $val);
+            }
+        }
+        foreach ($varsToAssign as $key => $val) {
+            $templateMgr->assign($key, $val);
+        }
+
+        error_log('[XMLMetadataBuilder] Assigned state to active template & manager. New components: ' . json_encode(array_keys($state['components'] ?? [])));
         
         // Render the Tab Template and append to output
-        $output .= $templateMgr->fetch('file:' . __DIR__ . '/templates/enricherForm.tpl');
+        if ($smartyTemplate && method_exists($smartyTemplate, 'fetch')) {
+            $output .= $smartyTemplate->fetch('file:' . __DIR__ . '/templates/enricherForm.tpl');
+        } else {
+            $output .= $templateMgr->fetch('file:' . __DIR__ . '/templates/enricherForm.tpl');
+        }
 
         return false;
     }
@@ -202,6 +245,14 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
             'validation' => ['nullable']
         ];
         
+        // Add custom property for file action
+        $schema->properties->{\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_FILE_ACTION} = (object) [
+            'type' => 'string',
+            'multilingual' => false,
+            'apiSummary' => true,
+            'validation' => ['nullable']
+        ];
+
         // Add custom property for suffix
         $schema->properties->{\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_SUFFIX} = (object) [
             'type' => 'string',
@@ -272,11 +323,15 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
             return false;
         }
         
-        // Get the file ID, suffix, overwrite flag, and createGalley flag
+        // Get the file ID, fileAction, suffix, overwrite flag, and createGalley flag
         $xmlFileId = $params[\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_XML_FILE_ID] ?? null;
+        $fileAction = $params[\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_FILE_ACTION] ?? \APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::FILE_ACTION_SUFFIX;
         $suffix = $params[\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_SUFFIX] ?? \APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::DEFAULT_SUFFIX;
-        $overwrite = $params[\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_OVERWRITE] ?? false;
         $createGalley = $params[\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_CREATE_GALLEY] ?? true;
+
+        // Resolve overwrite flag from fileAction or legacy overwrite param
+        $overwrite = ($fileAction === \APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::FILE_ACTION_OVERWRITE)
+            || ($params[\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_OVERWRITE] ?? false);
         
         // Handle suffix if it comes as array (multilingual field)
         if (is_array($suffix)) {
@@ -300,6 +355,7 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
                 $xmlFileId,
                 $newPublication,
                 [
+                    'fileAction' => $fileAction,
                     'suffix' => $suffix,
                     'overwrite' => $overwrite,
                     'createGalley' => $createGalley

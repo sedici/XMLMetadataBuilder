@@ -1,82 +1,123 @@
 <?php
+
 namespace APP\plugins\generic\XMLMetadataBuilder\classes\components;
 
 use PKP\components\forms\FormComponent;
 use PKP\components\forms\FieldOptions;
 use PKP\components\forms\FieldText;
+use PKP\components\forms\FieldHTML;
+use APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService;
 
 class EnrichmentForm extends FormComponent
 {
     public $id = 'xmlEnricherForm';
     public $method = 'PUT';
 
-    public function __construct($action, $locales, $xmlFiles, $publication = null)
+    /**
+     * Constructor
+     *
+     * @param string $action URL to submit the form to (REST API publication endpoint)
+     * @param array $locales Supported form locales
+     * @param array $xmlFiles Production-ready XML files
+     * @param \PKP\publication\Publication|null $publication Current publication
+     */
+    public function __construct(string $action, array $locales, array $xmlFiles, $publication = null)
     {
         parent::__construct('xmlEnricherForm', 'PUT', $action, $locales);
 
         // Prepare options for XML file selection
         $xmlOptions = [];
         foreach ($xmlFiles as $file) {
+            $fileName = $file->getLocalizedData('name');
+            if (empty($fileName)) {
+                $fileName = $file->getData('originalFileName') ?: ('File ' . $file->getId());
+            }
             $xmlOptions[] = [
-                'value' => $file->getId(),
-                'label' => $file->getLocalizedData('name'),
+                'value' => (int) $file->getId(),
+                'label' => $fileName,
             ];
         }
 
-        // Add field for XML file selection (radio buttons)
+        $selectedFileId = '';
+        // Always start empty so user explicitly chooses which XML to process
+
+        // 1. XML File Selection
         if (!empty($xmlOptions)) {
-            $this->addField(new FieldOptions(\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_XML_FILE_ID, [
+            $this->addField(new FieldOptions(EnrichmentService::SETTING_XML_FILE_ID, [
                 'label' => __('plugins.generic.XMLMetadataBuilder.selectXmlFile'),
                 'description' => __('plugins.generic.XMLMetadataBuilder.selectXmlFile.description'),
                 'type' => 'radio',
                 'options' => $xmlOptions,
-                'value' => [],  // Always start empty, don't remember previous selection
+                'value' => $selectedFileId,
                 'isMultilingual' => false,
                 'isRequired' => true,
                 'groupId' => 'default',
             ]));
+        } else {
+            $this->addField(new FieldHTML('noXmlFilesWarning', [
+                'description' => '<div class="pkpNotification pkpNotification--warning">' . __('plugins.generic.XMLMetadataBuilder.noXmlFiles') . '</div>',
+                'groupId' => 'default',
+            ]));
         }
 
-        // Add checkbox for overwrite (SECOND)
-        $this->addField(new FieldOptions(\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_OVERWRITE, [
+        // 2. Overwrite Checkbox
+        $isOverwrite = false;
+        if ($publication && $publication->getData(EnrichmentService::SETTING_OVERWRITE) !== null) {
+            $isOverwrite = (bool) $publication->getData(EnrichmentService::SETTING_OVERWRITE);
+        } elseif ($publication && $publication->getData(EnrichmentService::SETTING_FILE_ACTION) === EnrichmentService::FILE_ACTION_OVERWRITE) {
+            $isOverwrite = true;
+        }
+
+        $this->addField(new FieldOptions(EnrichmentService::SETTING_OVERWRITE, [
             'label' => __('plugins.generic.XMLMetadataBuilder.overwrite'),
             'type' => 'checkbox',
             'options' => [
-                ['value' => true, 'label' => __('plugins.generic.XMLMetadataBuilder.overwrite.confirm')]
+                [
+                    'value' => true,
+                    'label' => __('plugins.generic.XMLMetadataBuilder.overwrite.confirm'),
+                ]
             ],
-            'value' => $publication ? $publication->getData(\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_OVERWRITE) : false,
+            'value' => $isOverwrite,
             'groupId' => 'default',
         ]));
 
-        // Add field for suffix (THIRD) - read current value from publication
-        $currentSuffix = $publication ? $publication->getData(\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_SUFFIX) : null;
-        $this->addField(new FieldText(\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_SUFFIX, [
+        // 3. Suffix field - option to customize suffix when generating a new production file
+        $currentSuffix = $publication ? $publication->getData(EnrichmentService::SETTING_SUFFIX) : null;
+        $this->addField(new FieldText(EnrichmentService::SETTING_SUFFIX, [
             'label' => __('plugins.generic.XMLMetadataBuilder.suffix'),
             'description' => __('plugins.generic.XMLMetadataBuilder.suffixDescription'),
-            'value' => $currentSuffix ?: \APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::DEFAULT_SUFFIX,  // Use saved value or default
+            'value' => $currentSuffix ?: EnrichmentService::DEFAULT_SUFFIX,
             'isMultilingual' => false,
             'isRequired' => false,
             'groupId' => 'default',
         ]));
 
-        // Add checkbox for createGalley (FOURTH)
-        $this->addField(new FieldOptions(\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_CREATE_GALLEY, [
+        // 4. Create Galley Checkbox
+        $createGalleyValue = true;
+        if ($publication && $publication->getData(EnrichmentService::SETTING_CREATE_GALLEY) !== null) {
+            $createGalleyValue = (bool) $publication->getData(EnrichmentService::SETTING_CREATE_GALLEY);
+        }
+
+        $this->addField(new FieldOptions(EnrichmentService::SETTING_CREATE_GALLEY, [
             'label' => __('plugins.generic.XMLMetadataBuilder.createGalley'),
             'type' => 'checkbox',
             'options' => [
-                ['value' => true, 'label' => __('plugins.generic.XMLMetadataBuilder.createGalley.confirm')]
+                [
+                    'value' => true,
+                    'label' => __('plugins.generic.XMLMetadataBuilder.createGalley.confirm'),
+                ]
             ],
-            'value' => $publication ? $publication->getData(\APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService::SETTING_CREATE_GALLEY) : true, // Default to true
+            'value' => $createGalleyValue,
             'groupId' => 'default',
         ]));
 
-        // Set groups
+        // Set default group
         $this->addGroup([
             'id' => 'default',
             'pageId' => 'default',
         ]);
-        
-        // Set pages
+
+        // Set default page with customized submit button label
         $this->addPage([
             'id' => 'default',
             'submitButton' => [

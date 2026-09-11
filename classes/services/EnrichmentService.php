@@ -18,10 +18,14 @@ class EnrichmentService
 {
     // Constants for Plugin Settings
     public const SETTING_XML_FILE_ID = 'XMLMetadataBuilder::xmlFileId';
+    public const SETTING_FILE_ACTION = 'XMLMetadataBuilder::fileAction';
     public const SETTING_SUFFIX = 'XMLMetadataBuilder::suffix';
     public const SETTING_OVERWRITE = 'XMLMetadataBuilder::overwrite';
     public const SETTING_CREATE_GALLEY = 'XMLMetadataBuilder::createGalley';
     public const DEFAULT_SUFFIX = '-enriched';
+
+    public const FILE_ACTION_SUFFIX = 'suffix';
+    public const FILE_ACTION_OVERWRITE = 'overwrite';
 
     /**
      * Get all production-ready XML files for a submission
@@ -64,7 +68,8 @@ class EnrichmentService
     public function enrich($fileId, $publication, array $options = [])
     {
         $suffix = $options['suffix'] ?? self::DEFAULT_SUFFIX;
-        $overwrite = $options['overwrite'] ?? false;
+        $fileAction = $options['fileAction'] ?? null;
+        $overwrite = ($fileAction === self::FILE_ACTION_OVERWRITE) || ($options['overwrite'] ?? false);
         $createGalley = $options['createGalley'] ?? true;
                 
         // Handle multilingual file IDs
