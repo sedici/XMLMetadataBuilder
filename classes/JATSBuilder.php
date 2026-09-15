@@ -140,20 +140,19 @@ class JATSBuilder
         $articleMeta = $this->el('article-meta');
 
         // 1. article-id (IDs first)
-        // NOTE: SciELO standard only uses DOI for article-id, not publisher's internal ID
-        // Commenting out publisher-id to match SciELO requirements
-        /*
-        if (!empty($metadata['articleId'])) {
-            $articleMeta->appendChild(
-                $this->elAttr('article-id', ['pub-id-type' => 'publisher-id'], $metadata['articleId'])
-            );
-        }
-        */
-
-        // DOI - REQUIRED by SciELO
+        // SciELO validator REQUIRES at least one article-id.
+        // Primary: DOI (preferred by SciELO).
+        // Fallback: publisher-id with OJS submissionId when no DOI is available,
+        //           so the validator never fails due to a missing article-id.
         if (!empty($metadata['doi'])) {
             $articleMeta->appendChild(
                 $this->elAttr('article-id', ['pub-id-type' => 'doi'], $metadata['doi'])
+            );
+        } elseif (!empty($metadata['articleId'])) {
+            // Fallback: use OJS internal submission ID as publisher-id
+            // SciELO allows publisher-id as a collection-assigned identifier (SPS spec)
+            $articleMeta->appendChild(
+                $this->elAttr('article-id', ['pub-id-type' => 'publisher-id'], (string) $metadata['articleId'])
             );
         }
 
@@ -361,7 +360,8 @@ class JATSBuilder
                 // Add media element with file reference
                 if (!empty($material['filename']) && !empty($material['mimetype'])) {
                     $mimeparts = $this->splitMimeType($material['mimetype']);
-                    $mediaAttrs = ['xlink:href' => $material['filename']];
+                    $href = !empty($material['href']) ? $material['href'] : $material['filename'];
+                    $mediaAttrs = ['xlink:href' => str_replace(' ', '%20', trim($href))];
                     
                     // SciELO requires mimetype and mime-subtype as separate attributes
                     if (!empty($mimeparts['mimetype'])) {
@@ -492,12 +492,15 @@ class JATSBuilder
         $subtitles = is_array($metadata['subtitle']) ? $metadata['subtitle'] : [];
         
         // Primary title (required)
-        $primaryTitle = $titles[$primaryLocale] ?? reset($titles) ?? '';
+        $primaryTitle = $this->cleanTitle($titles[$primaryLocale] ?? reset($titles) ?? '');
         $titleGroup->appendChild($this->el('article-title', $primaryTitle));
         
         // Primary subtitle (optional)
         if (!empty($subtitles[$primaryLocale])) {
-            $titleGroup->appendChild($this->el('subtitle', $subtitles[$primaryLocale]));
+            $cleanSubtitle = $this->cleanTitle($subtitles[$primaryLocale]);
+            if (!empty($cleanSubtitle)) {
+                $titleGroup->appendChild($this->el('subtitle', $cleanSubtitle));
+            }
         }
         
         // Translated titles (trans-title-group for each additional language)
@@ -507,8 +510,9 @@ class JATSBuilder
                 continue;
             }
             
+            $cleanTitle = $this->cleanTitle($title);
             // Skip empty titles
-            if (empty($title)) {
+            if (empty($cleanTitle)) {
                 continue;
             }
             
@@ -517,17 +521,31 @@ class JATSBuilder
             
             // Create trans-title-group with xml:lang attribute
             $transGroup = $this->elAttr('trans-title-group', ['xml:lang' => $jatsLang]);
-            $transGroup->appendChild($this->el('trans-title', $title));
+            $transGroup->appendChild($this->el('trans-title', $cleanTitle));
             
             // Add translated subtitle if available
             if (!empty($subtitles[$locale])) {
-                $transGroup->appendChild($this->el('trans-subtitle', $subtitles[$locale]));
+                $cleanTransSub = $this->cleanTitle($subtitles[$locale]);
+                if (!empty($cleanTransSub)) {
+                    $transGroup->appendChild($this->el('trans-subtitle', $cleanTransSub));
+                }
             }
             
             $titleGroup->appendChild($transGroup);
         }
         
         return $titleGroup;
+    }
+
+    /**
+     * Limpia etiquetas HTML (como <i>, <em>, etc.) de un string de título o subtítulo.
+     */
+    private function cleanTitle(?string $text): string
+    {
+        if ($text === null) {
+            return '';
+        }
+        return trim(strip_tags($text));
     }
 
     /**
