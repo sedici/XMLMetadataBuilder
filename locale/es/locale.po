@@ -76,3 +76,12 @@ msgstr "Enviar a Galeradas"
 
 msgid "plugins.generic.XMLMetadataBuilder.createGalley.confirm"
 msgstr "Crear una copia en Galeradas (si no se marca, solo se creará el archivo en Producción)"
+
+msgid "plugins.generic.XMLMetadataBuilder.fileAction"
+msgstr "Destino del archivo enriquecido"
+
+msgid "plugins.generic.XMLMetadataBuilder.fileAction.suffix"
+msgstr "Crear un nuevo archivo XML con sufijo"
+
+msgid "plugins.generic.XMLMetadataBuilder.fileAction.overwrite"
+msgstr "Sobrescribir el archivo original existente"

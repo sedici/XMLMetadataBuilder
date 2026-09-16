@@ -76,3 +76,12 @@ msgstr "Submit to Galleys"
 
 msgid "plugins.generic.XMLMetadataBuilder.createGalley.confirm"
 msgstr "Create a copy in Galleys (if unchecked, the file will only be created in Production)"
+
+msgid "plugins.generic.XMLMetadataBuilder.fileAction"
+msgstr "Enriched XML Destination"
+
+msgid "plugins.generic.XMLMetadataBuilder.fileAction.suffix"
+msgstr "Create a new XML file with suffix"
+
+msgid "plugins.generic.XMLMetadataBuilder.fileAction.overwrite"
+msgstr "Overwrite the existing original file"
