@@ -123,10 +123,18 @@ class EnrichmentService
         // Enrich the XML using PluginMetadataProcessor
         $newXml = XMLMetadataProcessor::enrichFront($contents, $submission, $publication, null, $fileId);
         
-        // Create temporary file
+        // Create temporary file for production (no URI normalization — keeps original
+        // xlink:href values so Texture can match them against DB file names).
         $tempFilePath = tempnam(sys_get_temp_dir(), 'xml_enricher_');
+
+        // Create a separate temporary file for galley with normalized URIs.
+        // Spaces in xlink:href are replaced with %20 so that LensGalley can match
+        // them: it applies rawurlencode(name_in_DB) which also produces %20.
+        $galleyXml = XMLMetadataProcessor::normalizeUrisInXmlString($newXml);
+        $tempGalleyFilePath = tempnam(sys_get_temp_dir(), 'xml_galley_');
         try {
             file_put_contents($tempFilePath, $newXml);
+            file_put_contents($tempGalleyFilePath, $galleyXml);
             
             if ($overwrite) {
                 // CASE 1: Overwrite Source File in Production
@@ -167,7 +175,7 @@ class EnrichmentService
                         $file,
                         $galleyFilename,
                         $locale,
-                        $tempFilePath,
+                        $tempGalleyFilePath,
                         SubmissionFile::SUBMISSION_FILE_PROOF,
                         $request->getUser()->getId(),
                         $now,
@@ -229,7 +237,7 @@ class EnrichmentService
                         $file,
                         $newFilename,
                         $locale,
-                        $tempFilePath,
+                        $tempGalleyFilePath,
                         SubmissionFile::SUBMISSION_FILE_PROOF,
                         $request->getUser()->getId(),
                         $now,
@@ -252,9 +260,12 @@ class EnrichmentService
             }
             
         } finally {
-            // Cleanup temp file
+            // Cleanup temp files
             if (file_exists($tempFilePath)) {
                 unlink($tempFilePath);
+            }
+            if (file_exists($tempGalleyFilePath)) {
+                unlink($tempGalleyFilePath);
             }
         }
     }
