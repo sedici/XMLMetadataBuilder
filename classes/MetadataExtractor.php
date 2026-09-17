@@ -396,7 +396,7 @@ class MetadataExtractor
                     'label' => $label,
                     'caption' => $file->getLocalizedData('description'),
                     'mimetype' => $file->getData('mimetype'),
-                    'href' => $originalName ? (strpos($originalName, ' ') !== false ? str_replace(' ', '%20', $originalName) : $originalName) : null,
+                    'href' => $originalName,
                     'filename' => $originalName,
                 ];
             }
