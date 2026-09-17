@@ -361,7 +361,7 @@ class JATSBuilder
                 if (!empty($material['filename']) && !empty($material['mimetype'])) {
                     $mimeparts = $this->splitMimeType($material['mimetype']);
                     $href = !empty($material['href']) ? $material['href'] : $material['filename'];
-                    $mediaAttrs = ['xlink:href' => str_replace(' ', '%20', trim($href))];
+                    $mediaAttrs = ['xlink:href' => trim($href)];
                     
                     // SciELO requires mimetype and mime-subtype as separate attributes
                     if (!empty($mimeparts['mimetype'])) {
