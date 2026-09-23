@@ -140,20 +140,19 @@ class JATSBuilder
         $articleMeta = $this->el('article-meta');
 
         // 1. article-id (IDs first)
-        // NOTE: SciELO standard only uses DOI for article-id, not publisher's internal ID
-        // Commenting out publisher-id to match SciELO requirements
-        /*
-        if (!empty($metadata['articleId'])) {
-            $articleMeta->appendChild(
-                $this->elAttr('article-id', ['pub-id-type' => 'publisher-id'], $metadata['articleId'])
-            );
-        }
-        */
-
-        // DOI - REQUIRED by SciELO
+        // SciELO validator REQUIRES at least one article-id.
+        // Primary: DOI (preferred by SciELO).
+        // Fallback: publisher-id with OJS submissionId when no DOI is available,
+        //           so the validator never fails due to a missing article-id.
         if (!empty($metadata['doi'])) {
             $articleMeta->appendChild(
                 $this->elAttr('article-id', ['pub-id-type' => 'doi'], $metadata['doi'])
+            );
+        } elseif (!empty($metadata['articleId'])) {
+            // Fallback: use OJS internal submission ID as publisher-id
+            // SciELO allows publisher-id as a collection-assigned identifier (SPS spec)
+            $articleMeta->appendChild(
+                $this->elAttr('article-id', ['pub-id-type' => 'publisher-id'], (string) $metadata['articleId'])
             );
         }
 
@@ -361,7 +360,8 @@ class JATSBuilder
                 // Add media element with file reference
                 if (!empty($material['filename']) && !empty($material['mimetype'])) {
                     $mimeparts = $this->splitMimeType($material['mimetype']);
-                    $mediaAttrs = ['xlink:href' => $material['filename']];
+                    $href = !empty($material['href']) ? $material['href'] : $material['filename'];
+                    $mediaAttrs = ['xlink:href' => trim($href)];
                     
                     // SciELO requires mimetype and mime-subtype as separate attributes
                     if (!empty($mimeparts['mimetype'])) {
@@ -456,12 +456,17 @@ class JATSBuilder
             $articleMeta->appendChild($kwdGroup);
         }
 
-        // 14. counts (preserved from original XML if available, MUST come before custom-meta-group)
-        // This preserves fig-count, table-count, ref-count, etc. from source XMLs like SciELO
-        if (!empty($metadata['countsElement']) && $metadata['countsElement'] instanceof \DOMElement) {
-            // Import the counts element from the old DOM into this builder's DOM
-            $importedCounts = $this->doc->importNode($metadata['countsElement'], true);
-            $articleMeta->appendChild($importedCounts);
+        // 14. counts (MUST come before custom-meta-group)
+        if (isset($metadata['counts'])) {
+            $counts = $this->el('counts');
+            $counts->appendChild($this->elAttr('fig-count', ['count' => (string) $metadata['counts']['fig-count']]));
+            $counts->appendChild($this->elAttr('table-count', ['count' => (string) $metadata['counts']['table-count']]));
+            $counts->appendChild($this->elAttr('equation-count', ['count' => (string) $metadata['counts']['equation-count']]));
+            $counts->appendChild($this->elAttr('ref-count', ['count' => (string) $metadata['counts']['ref-count']]));
+            if (isset($metadata['counts']['page-count'])) {
+                $counts->appendChild($this->elAttr('page-count', ['count' => (string) $metadata['counts']['page-count']]));
+            }
+            $articleMeta->appendChild($counts);
         }
 
         // 15. custom-meta-group (last)
@@ -487,12 +492,15 @@ class JATSBuilder
         $subtitles = is_array($metadata['subtitle']) ? $metadata['subtitle'] : [];
         
         // Primary title (required)
-        $primaryTitle = $titles[$primaryLocale] ?? reset($titles) ?? '';
+        $primaryTitle = $this->cleanTitle($titles[$primaryLocale] ?? reset($titles) ?? '');
         $titleGroup->appendChild($this->el('article-title', $primaryTitle));
         
         // Primary subtitle (optional)
         if (!empty($subtitles[$primaryLocale])) {
-            $titleGroup->appendChild($this->el('subtitle', $subtitles[$primaryLocale]));
+            $cleanSubtitle = $this->cleanTitle($subtitles[$primaryLocale]);
+            if (!empty($cleanSubtitle)) {
+                $titleGroup->appendChild($this->el('subtitle', $cleanSubtitle));
+            }
         }
         
         // Translated titles (trans-title-group for each additional language)
@@ -502,8 +510,9 @@ class JATSBuilder
                 continue;
             }
             
+            $cleanTitle = $this->cleanTitle($title);
             // Skip empty titles
-            if (empty($title)) {
+            if (empty($cleanTitle)) {
                 continue;
             }
             
@@ -512,17 +521,31 @@ class JATSBuilder
             
             // Create trans-title-group with xml:lang attribute
             $transGroup = $this->elAttr('trans-title-group', ['xml:lang' => $jatsLang]);
-            $transGroup->appendChild($this->el('trans-title', $title));
+            $transGroup->appendChild($this->el('trans-title', $cleanTitle));
             
             // Add translated subtitle if available
             if (!empty($subtitles[$locale])) {
-                $transGroup->appendChild($this->el('trans-subtitle', $subtitles[$locale]));
+                $cleanTransSub = $this->cleanTitle($subtitles[$locale]);
+                if (!empty($cleanTransSub)) {
+                    $transGroup->appendChild($this->el('trans-subtitle', $cleanTransSub));
+                }
             }
             
             $titleGroup->appendChild($transGroup);
         }
         
         return $titleGroup;
+    }
+
+    /**
+     * Limpia etiquetas HTML (como <i>, <em>, etc.) de un string de título o subtítulo.
+     */
+    private function cleanTitle(?string $text): string
+    {
+        if ($text === null) {
+            return '';
+        }
+        return trim(strip_tags($text));
     }
 
     /**

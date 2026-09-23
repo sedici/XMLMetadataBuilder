@@ -131,8 +131,8 @@ class MetadataExtractor
         }
         
         return [
-            'title'       => $publication->getData('title') ?? [],        // Array multilingüe: ['es_ES' => 'Título', 'en_US' => 'Title']
-            'subtitle'    => $publication->getData('subtitle') ?? [],     // Array multilingüe
+            'title'       => $this->cleanTitleData($publication->getData('title') ?? []),        // Array multilingüe: ['es_ES' => 'Título', 'en_US' => 'Title']
+            'subtitle'    => $this->cleanTitleData($publication->getData('subtitle') ?? []),     // Array multilingüe
             'primaryLocale' => $publication->getData('locale'),           // Idioma principal de la publicación
             'doi'         => $publication->getDoi(),
             'abstract'    => $publication->getData('abstract') ?? [],     // Array multilingüe
@@ -149,6 +149,24 @@ class MetadataExtractor
             'issueId'     => $issueId,
             'submissionId'=> $submission->getId(),
         ];
+    }
+
+    /**
+     * Limpia etiquetas HTML (especialmente etiquetas <i>, <em>, etc.) de títulos y subtítulos.
+     */
+    protected function cleanTitleData($data)
+    {
+        if (is_array($data)) {
+            $cleaned = [];
+            foreach ($data as $key => $val) {
+                $cleaned[$key] = $this->cleanTitleData($val);
+            }
+            return $cleaned;
+        }
+        if (is_string($data)) {
+            return trim(strip_tags($data));
+        }
+        return $data;
     }
 
 
@@ -371,13 +389,15 @@ class MetadataExtractor
                     continue;
                 }
 
+                $originalName = $file->getLocalizedData('name') ?: ($file->getData('path') ? basename($file->getData('path')) : null);
+
                 $materials[$label] = [
                     'id' => 'supp' . $file->getId(),
                     'label' => $label,
                     'caption' => $file->getLocalizedData('description'),
                     'mimetype' => $file->getData('mimetype'),
-                    'href' => $file->getData('path'),
-                    'filename' => $file->getData('path') ? basename($file->getData('path')) : null,
+                    'href' => $originalName,
+                    'filename' => $originalName,
                 ];
             }
         }

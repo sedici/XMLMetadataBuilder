@@ -110,21 +110,27 @@ class XMLMetadataProcessor
             'supplementaryMaterials' => $meta['supplementaryMaterials'] ?? [],
         ];
         
-        // Extract and preserve <counts> from original XML if it exists
-        // This preserves fig-count, table-count, ref-count, etc. from SciELO XMLs
-        $countsElement = null;
-        $oldFronts = $dom->getElementsByTagName('front');
-        if ($oldFronts->length) {
-            $oldFront = $oldFronts->item(0);
-            $countsNodes = $oldFront->getElementsByTagName('counts');
-            if ($countsNodes->length) {
-                // Clone the counts element to preserve it
-                $countsElement = $countsNodes->item(0)->cloneNode(true);
+        // Calculate counts dynamically from the document instead of preserving old ones
+        $counts = [
+            'fig-count' => $dom->getElementsByTagName('fig')->length,
+            'table-count' => $dom->getElementsByTagName('table-wrap')->length,
+            'equation-count' => $dom->getElementsByTagName('disp-formula')->length,
+            'ref-count' => $dom->getElementsByTagName('ref')->length,
+        ];
+
+        // An article is electronic if it has an elocation-id.
+        // Electronic-only articles do not have a page-count.
+        // Otherwise, page-count is calculated as the difference (inclusive) between lastPage and firstPage.
+        $isElectronic = !empty($builderMeta['elocationId']);
+        if (!$isElectronic) {
+            $firstPage = $builderMeta['firstPage'];
+            $lastPage = $builderMeta['lastPage'];
+            if ($firstPage !== null && $lastPage !== null && is_numeric($firstPage) && is_numeric($lastPage)) {
+                $counts['page-count'] = (int)$lastPage - (int)$firstPage + 1;
             }
         }
-        
-        // Pass counts element to builder
-        $builderMeta['countsElement'] = $countsElement;
+
+        $builderMeta['counts'] = $counts;
         
         // Build <front> with JATSBuilder
         $builder = new JATSBuilder();
@@ -159,5 +165,53 @@ class XMLMetadataProcessor
 
         $result = $dom->saveXML();
         return $result;
+    }
+
+    /**
+     * Normalizes URIs in href and xlink:href attributes across the XML document.
+     * Replaces spaces with %20 to ensure compatibility with LensGalley.
+     *
+     * LensGalley resolves images by applying rawurlencode() to the DB file name
+     * and searching for that pattern inside the raw XML string. If the xlink:href
+     * has a literal space, rawurlencode("figura 1.jpg") = "figura%201.jpg" won't
+     * match "figura 1.jpg" in the XML. Encoding the href to %20 fixes this.
+     *
+     * This method must be called ONLY when generating the galley (PROOF) XML,
+     * NOT for the production file (which Texture edits). Texture compares
+     * basename(xlink:href) literally with basename(name in DB); if both keep
+     * the original space the match works fine without any encoding.
+     *
+     * @param DOMDocument $dom The document to normalize in-place
+     * @return void
+     */
+    public static function normalizeUris(DOMDocument $dom): void
+    {
+        $xpath = new \DOMXPath($dom);
+        $hrefAttributes = $xpath->query('//@*[local-name()="href"]');
+        if ($hrefAttributes) {
+            foreach ($hrefAttributes as $attr) {
+                $val = trim($attr->nodeValue);
+                if ($val !== '' && strpos($val, ' ') !== false) {
+                    $attr->nodeValue = str_replace(' ', '%20', $val);
+                }
+            }
+        }
+    }
+
+    /**
+     * Convenience wrapper: applies normalizeUris() to an XML string and returns
+     * the normalized XML string. Intended for use when generating galley files.
+     *
+     * @param string $xmlString Raw XML content
+     * @return string Normalized XML content
+     */
+    public static function normalizeUrisInXmlString(string $xmlString): string
+    {
+        $dom = new \DOMDocument('1.0', 'utf-8');
+        libxml_use_internal_errors(true);
+        $dom->loadXML($xmlString);
+        libxml_use_internal_errors(false);
+        self::normalizeUris($dom);
+        return $dom->saveXML();
     }
 }

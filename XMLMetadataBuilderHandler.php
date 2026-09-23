@@ -18,6 +18,7 @@ namespace APP\plugins\generic\XMLMetadataBuilder;
 use APP\core\Application;
 use APP\facades\Repo;
 use APP\handler\Handler;
+use PKP\core\JSONMessage;
 use PKP\plugins\PluginRegistry;
 use PKP\security\authorization\WorkflowStageAccessPolicy;
 use PKP\security\Role;
@@ -81,7 +82,7 @@ class XMLMetadataBuilderHandler extends Handler
     // -------------------------------------------------------------------------
 
     /**
-     * Return the enriched XML <front> element as plain text (Preview).
+     * Return the enriched XML <front> element as preview content in a modal.
      *
      * By the time this method is reached the framework has already verified
      * authentication and role-based access via authorize(). No further
@@ -89,43 +90,40 @@ class XMLMetadataBuilderHandler extends Handler
      *
      * @param array $args
      * @param \PKP\core\PKPRequest $request
+     * @return JSONMessage
      */
-    public function showFront($args, $request): void
+    public function showFront($args, $request): JSONMessage
     {
-        header('Content-Type: text/plain; charset=utf-8');
-
         $xmlFileId = (int) $request->getUserVar('xmlFileId');
         if ($xmlFileId <= 0) {
-            http_response_code(400);
-            echo 'Error: ID de archivo inválido';
-            exit;
+            return new JSONMessage(false, __('plugins.generic.XMLMetadataBuilder.noFileSelected'));
         }
 
         $file = Repo::submissionFile()->get($xmlFileId);
         if (!$file) {
-            http_response_code(404);
-            echo 'Error: Archivo no encontrado';
-            exit;
+            return new JSONMessage(false, __('plugins.generic.XMLMetadataBuilder.fileNotFound'));
         }
 
         // Security check: Ensure the requested file belongs to the authorized submission
         $authorizedSubmission = $this->getAuthorizedContextObject(Application::ASSOC_TYPE_SUBMISSION);
         if (!$authorizedSubmission || $file->getData('submissionId') !== $authorizedSubmission->getId()) {
-            http_response_code(403);
-            echo 'Error: Acceso denegado al archivo';
-            exit;
+            return new JSONMessage(false, __('common.permissionDenied'));
         }
 
         try {
             $service = new \APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService();
-            echo $service->extractFrontElement($xmlFileId);
-        } catch (\Exception $e) {
-            http_response_code(500);
-            error_log('[XMLMetadataBuilder] showFront error: ' . $e->getMessage());
-            echo 'Error: No se pudo procesar el archivo XML';
-        }
+            $frontXml = $service->extractFrontElement($xmlFileId);
 
-        exit;
+            $html = '<div class="pkp_xml_front_preview" style="padding: 10px;">' .
+                '<pre style="max-height: 550px; overflow: auto; padding: 15px; background: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 4px; font-family: monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-all;">' .
+                htmlspecialchars($frontXml, ENT_QUOTES, 'UTF-8') .
+                '</pre>' .
+                '</div>';
+
+            return new JSONMessage(true, $html);
+        } catch (\Exception $e) {
+            return new JSONMessage(false, __('plugins.generic.XMLMetadataBuilder.enrichmentError'));
+        }
     }
 
     /**
@@ -203,7 +201,6 @@ class XMLMetadataBuilderHandler extends Handler
                         }
                     } catch (\Exception $e) {
                         // Skip file if it can't be read
-                        error_log('[XMLMetadataBuilder] download error (dependent file): ' . $e->getMessage());
                     }
                 }
 
@@ -221,7 +218,6 @@ class XMLMetadataBuilderHandler extends Handler
             }
         } catch (\Exception $e) {
             header('Content-Type: text/plain; charset=utf-8');
-            error_log('[XMLMetadataBuilder] download error: ' . $e->getMessage());
             echo 'Error: No se pudo procesar la descarga';
         }
 
