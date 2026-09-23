@@ -122,7 +122,6 @@ class XMLMetadataBuilderHandler extends Handler
 
             return new JSONMessage(true, $html);
         } catch (\Exception $e) {
-            error_log('[XMLMetadataBuilder] showFront error: ' . $e->getMessage());
             return new JSONMessage(false, __('plugins.generic.XMLMetadataBuilder.enrichmentError'));
         }
     }
@@ -202,7 +201,6 @@ class XMLMetadataBuilderHandler extends Handler
                         }
                     } catch (\Exception $e) {
                         // Skip file if it can't be read
-                        error_log('[XMLMetadataBuilder] download error (dependent file): ' . $e->getMessage());
                     }
                 }
 
@@ -220,7 +218,6 @@ class XMLMetadataBuilderHandler extends Handler
             }
         } catch (\Exception $e) {
             header('Content-Type: text/plain; charset=utf-8');
-            error_log('[XMLMetadataBuilder] download error: ' . $e->getMessage());
             echo 'Error: No se pudo procesar la descarga';
         }
 

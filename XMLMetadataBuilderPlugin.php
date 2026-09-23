@@ -185,9 +185,6 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
         if (!$state) {
             $state = $templateMgr->getTemplateVars('state');
         }
-
-        error_log('[XMLMetadataBuilder] addToPublicationForms called. State is null? ' . ($state === null ? 'yes' : 'no'));
-        error_log('[XMLMetadataBuilder] Existing state components: ' . json_encode(array_keys($state['components'] ?? [])));
         
         $state['components'][$componentId] = $formConfig;
         
@@ -215,8 +212,6 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
         foreach ($varsToAssign as $key => $val) {
             $templateMgr->assign($key, $val);
         }
-
-        error_log('[XMLMetadataBuilder] Assigned state to active template & manager. New components: ' . json_encode(array_keys($state['components'] ?? [])));
         
         // Render the Tab Template and append to output
         if ($smartyTemplate && method_exists($smartyTemplate, 'fetch')) {
@@ -362,7 +357,7 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
                 ]
             );
         } catch (\Exception $e) {
-            error_log('[XMLMetadataBuilder] Error al enriquecer XML durante la edición de la publicación: ' . $e->getMessage());
+            // Silently ignore or handle exception
         }
         
         return false;
