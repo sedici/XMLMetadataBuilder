@@ -26,41 +26,6 @@
     </div>
 
     <script type="text/javascript">
-        (function() {
-            var formConfig = {$xmlEnricherConfig|json_encode};
-
-            function registerXmlEnricherForm(app) {
-                if (!app || !app.components) return;
-                if (!app.components.xmlEnricherForm && formConfig) {
-                    if (typeof app.$set === 'function') {
-                        app.$set(app.components, 'xmlEnricherForm', formConfig);
-                    } else {
-                        app.components.xmlEnricherForm = formConfig;
-                    }
-                }
-                if (app.publicationFormIds && !app.publicationFormIds.includes('xmlEnricherForm')) {
-                    app.publicationFormIds.push('xmlEnricherForm');
-                }
-                if (typeof app.setPublicationForms === 'function' && app.workingPublication) {
-                    app.setPublicationForms(app.workingPublication);
-                }
-            }
-
-            // 1. If app instance is already initialized in registry
-            if (typeof pkp !== 'undefined' && pkp.registry && pkp.registry._instances && pkp.registry._instances['app']) {
-                registerXmlEnricherForm(pkp.registry._instances['app']);
-            }
-
-            // 2. When Vue root mounts
-            if (typeof pkp !== 'undefined' && pkp.eventBus) {
-                pkp.eventBus.$on('root:mounted', function(id, instance) {
-                    if (id === 'app') {
-                        registerXmlEnricherForm(instance);
-                    }
-                });
-            }
-        })();
-
         window.XMLMetadataBuilder = window.XMLMetadataBuilder || {};
         window.XMLMetadataBuilder.urls = {
             download: {$xmlEnricherDownloadUrl|json_encode}
