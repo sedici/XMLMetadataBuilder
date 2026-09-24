@@ -176,9 +176,16 @@
                 }
             }
 
-            // 2. Link overwrite checkbox state to suffix field (disable / dim suffix when overwrite is checked)
-            var overwriteInput = tab.querySelector('input[name*="overwrite"]');
+            // 2. Link fileAction state to suffix field (disable / dim suffix when overwrite is selected)
+            var overwriteInput = tab.querySelector('input[name*="fileAction"][value="overwrite"], input[name*="overwrite"]');
             var suffixInput = tab.querySelector('input[name*="suffix"]');
+            var anyActionChecked = tab.querySelector('input[name*="fileAction"]:checked');
+            if (!anyActionChecked) {
+                var defaultActionRadio = tab.querySelector('input[name*="fileAction"][value="suffix"]');
+                if (defaultActionRadio) {
+                    defaultActionRadio.checked = true;
+                }
+            }
             if (overwriteInput && suffixInput) {
                 var isOverwrite = overwriteInput.checked;
                 suffixInput.disabled = isOverwrite;
