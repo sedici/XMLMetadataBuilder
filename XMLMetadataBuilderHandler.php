@@ -19,9 +19,11 @@ use APP\core\Application;
 use APP\facades\Repo;
 use APP\handler\Handler;
 use PKP\core\JSONMessage;
+use PKP\core\PKPRequest;
 use PKP\plugins\PluginRegistry;
 use PKP\security\authorization\WorkflowStageAccessPolicy;
 use PKP\security\Role;
+use APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService;
 
 class XMLMetadataBuilderHandler extends Handler
 {
@@ -89,7 +91,7 @@ class XMLMetadataBuilderHandler extends Handler
      * security checks are required here.
      *
      * @param array $args
-     * @param \PKP\core\PKPRequest $request
+     * @param PKPRequest $request
      * @return JSONMessage
      */
     public function showFront($args, $request): JSONMessage
@@ -111,7 +113,7 @@ class XMLMetadataBuilderHandler extends Handler
         }
 
         try {
-            $service = new \APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService();
+            $service = new EnrichmentService();
             $frontXml = $service->extractFrontElement($xmlFileId);
 
             $html = '<div class="pkp_xml_front_preview" style="padding: 10px;">' .
@@ -133,7 +135,7 @@ class XMLMetadataBuilderHandler extends Handler
      * OJS before this method is invoked.
      *
      * @param array $args
-     * @param \PKP\core\PKPRequest $request
+     * @param PKPRequest $request
      */
     public function download($args, $request): void
     {
@@ -163,7 +165,7 @@ class XMLMetadataBuilderHandler extends Handler
                 exit;
             }
 
-            $service = new \APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService();
+            $service = new EnrichmentService();
             $enrichedXml    = $service->getEnrichedXmlContent($xmlFileId);
             $dependentFiles = $service->getDependentFilesPublic($xmlFileId);
 
@@ -227,6 +229,6 @@ class XMLMetadataBuilderHandler extends Handler
 
 /* Backwards compatibility (OJS < 3.4) */
 if (!defined('PKP_STRICT_MODE') || !PKP_STRICT_MODE) {
-    class_alias('\APP\plugins\generic\XMLMetadataBuilder\XMLMetadataBuilderHandler', '\XMLMetadataBuilderHandler');
+    class_alias(XMLMetadataBuilderHandler::class, '\XMLMetadataBuilderHandler');
 }
 

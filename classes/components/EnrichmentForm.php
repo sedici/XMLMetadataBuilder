@@ -6,6 +6,7 @@ use PKP\components\forms\FormComponent;
 use PKP\components\forms\FieldOptions;
 use PKP\components\forms\FieldText;
 use PKP\components\forms\FieldHTML;
+use PKP\publication\Publication;
 use APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService;
 
 class EnrichmentForm extends FormComponent
@@ -19,7 +20,7 @@ class EnrichmentForm extends FormComponent
      * @param string $action URL to submit the form to (REST API publication endpoint)
      * @param array $locales Supported form locales
      * @param array $xmlFiles Production-ready XML files
-     * @param \PKP\publication\Publication|null $publication Current publication
+     * @param Publication|null $publication Current publication
      */
     public function __construct(string $action, array $locales, array $xmlFiles, $publication = null)
     {
