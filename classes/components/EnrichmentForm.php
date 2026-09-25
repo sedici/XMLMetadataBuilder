@@ -6,6 +6,7 @@ use PKP\components\forms\FormComponent;
 use PKP\components\forms\FieldOptions;
 use PKP\components\forms\FieldText;
 use PKP\components\forms\FieldHTML;
+use PKP\publication\Publication;
 use APP\plugins\generic\XMLMetadataBuilder\classes\services\EnrichmentService;
 
 class EnrichmentForm extends FormComponent
@@ -19,7 +20,7 @@ class EnrichmentForm extends FormComponent
      * @param string $action URL to submit the form to (REST API publication endpoint)
      * @param array $locales Supported form locales
      * @param array $xmlFiles Production-ready XML files
-     * @param \PKP\publication\Publication|null $publication Current publication
+     * @param Publication|null $publication Current publication
      */
     public function __construct(string $action, array $locales, array $xmlFiles, $publication = null)
     {
@@ -60,24 +61,28 @@ class EnrichmentForm extends FormComponent
             ]));
         }
 
-        // 2. Overwrite Checkbox
-        $isOverwrite = false;
-        if ($publication && $publication->getData(EnrichmentService::SETTING_OVERWRITE) !== null) {
-            $isOverwrite = (bool) $publication->getData(EnrichmentService::SETTING_OVERWRITE);
-        } elseif ($publication && $publication->getData(EnrichmentService::SETTING_FILE_ACTION) === EnrichmentService::FILE_ACTION_OVERWRITE) {
-            $isOverwrite = true;
+        // 2. Destination Action (fileAction) - Radio buttons: suffix or overwrite
+        $fileAction = EnrichmentService::FILE_ACTION_SUFFIX;
+        if ($publication && $publication->getData(EnrichmentService::SETTING_FILE_ACTION)) {
+            $fileAction = $publication->getData(EnrichmentService::SETTING_FILE_ACTION);
+        } elseif ($publication && $publication->getData(EnrichmentService::SETTING_OVERWRITE)) {
+            $fileAction = EnrichmentService::FILE_ACTION_OVERWRITE;
         }
 
-        $this->addField(new FieldOptions(EnrichmentService::SETTING_OVERWRITE, [
-            'label' => __('plugins.generic.XMLMetadataBuilder.overwrite'),
-            'type' => 'checkbox',
+        $this->addField(new FieldOptions(EnrichmentService::SETTING_FILE_ACTION, [
+            'label' => __('plugins.generic.XMLMetadataBuilder.fileAction'),
+            'type' => 'radio',
             'options' => [
                 [
-                    'value' => true,
-                    'label' => __('plugins.generic.XMLMetadataBuilder.overwrite.confirm'),
-                ]
+                    'value' => EnrichmentService::FILE_ACTION_SUFFIX,
+                    'label' => __('plugins.generic.XMLMetadataBuilder.fileAction.suffix'),
+                ],
+                [
+                    'value' => EnrichmentService::FILE_ACTION_OVERWRITE,
+                    'label' => __('plugins.generic.XMLMetadataBuilder.fileAction.overwrite'),
+                ],
             ],
-            'value' => $isOverwrite,
+            'value' => $fileAction,
             'groupId' => 'default',
         ]));
 
