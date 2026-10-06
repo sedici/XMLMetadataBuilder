@@ -7,6 +7,9 @@ use APP\facades\Repo;
 use APP\plugins\generic\XMLMetadataBuilder\classes\XMLMetadataProcessor;
 use PKP\submissionFile\SubmissionFile;
 use PKP\publication\Publication;
+use APP\core\Services;
+use PKP\core\Core;
+use PKP\config\Config;
 
 /**
  * EnrichmentService
@@ -151,7 +154,7 @@ class EnrichmentService
                 $newPath = $dir . '/' . $newFilename;
                 
                 
-                $fileService = \APP\core\Services::get('file');
+                $fileService = Services::get('file');
                 $uploadedFileId = $fileService->add($tempFilePath, $newPath);
                 
                 $targetFile->setData('fileId', $uploadedFileId);
@@ -167,7 +170,7 @@ class EnrichmentService
                     $baseName = pathinfo($originalName, PATHINFO_FILENAME);
                     $galleyFilename = $baseName . $suffix . '.xml';
                     
-                    $now = \PKP\core\Core::getCurrentDate();
+                    $now = Core::getCurrentDate();
                     
                     $proofFileId = $this->createEnrichedFile(
                         $submissionId,
@@ -204,7 +207,7 @@ class EnrichmentService
                 $newFilename = $baseName . $suffix . '.xml';
                 
                 $request = Application::get()->getRequest();
-                $now = \PKP\core\Core::getCurrentDate();
+                $now = Core::getCurrentDate();
                 
                 // Create PRODUCTION file
                 $productionFileId = $this->createEnrichedFile(
@@ -331,7 +334,7 @@ class EnrichmentService
         $newPath = $dir . '/' . $uniqueFilename;
                 
         // Upload file to storage
-        $fileService = \APP\core\Services::get('file');
+        $fileService = Services::get('file');
         $uploadedFileId = $fileService->add($tempFilePath, $newPath);
         
         $newFile->setData('fileId', $uploadedFileId);
@@ -425,7 +428,7 @@ class EnrichmentService
      */
     protected function getFilePath($file)
     {
-        $filesDir = \PKP\config\Config::getVar('files', 'files_dir');
+        $filesDir = Config::getVar('files', 'files_dir');
         $path = null;
         
         if (method_exists($file, 'getFilePath')) {
@@ -454,7 +457,7 @@ class EnrichmentService
      */
     public function readFileContent($file)
     {
-        $fileService = \APP\core\Services::get('file');
+        $fileService = Services::get('file');
         $contents = null;
         
         try {
@@ -653,7 +656,7 @@ class EnrichmentService
             $originalName = $sourceDependentFile->getLocalizedData('name') ?: 'dependent';
             
             // Set timestamps
-            $now = \PKP\core\Core::getCurrentDate();
+            $now = Core::getCurrentDate();
             $newDependentFile->setData('createdAt', $now);
             $newDependentFile->setData('updatedAt', $now);
             
@@ -687,7 +690,7 @@ class EnrichmentService
             file_put_contents($tempFilePath, $sourceContents);
             
             try {
-                $fileService = \APP\core\Services::get('file');
+                $fileService = Services::get('file');
                 $uploadedFileId = $fileService->add($tempFilePath, $newPath);
             } finally {
                 if (file_exists($tempFilePath)) {

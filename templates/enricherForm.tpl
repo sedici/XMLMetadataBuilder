@@ -26,41 +26,6 @@
     </div>
 
     <script type="text/javascript">
-        (function() {
-            var formConfig = {$xmlEnricherConfig|json_encode};
-
-            function registerXmlEnricherForm(app) {
-                if (!app || !app.components) return;
-                if (!app.components.xmlEnricherForm && formConfig) {
-                    if (typeof app.$set === 'function') {
-                        app.$set(app.components, 'xmlEnricherForm', formConfig);
-                    } else {
-                        app.components.xmlEnricherForm = formConfig;
-                    }
-                }
-                if (app.publicationFormIds && !app.publicationFormIds.includes('xmlEnricherForm')) {
-                    app.publicationFormIds.push('xmlEnricherForm');
-                }
-                if (typeof app.setPublicationForms === 'function' && app.workingPublication) {
-                    app.setPublicationForms(app.workingPublication);
-                }
-            }
-
-            // 1. If app instance is already initialized in registry
-            if (typeof pkp !== 'undefined' && pkp.registry && pkp.registry._instances && pkp.registry._instances['app']) {
-                registerXmlEnricherForm(pkp.registry._instances['app']);
-            }
-
-            // 2. When Vue root mounts
-            if (typeof pkp !== 'undefined' && pkp.eventBus) {
-                pkp.eventBus.$on('root:mounted', function(id, instance) {
-                    if (id === 'app') {
-                        registerXmlEnricherForm(instance);
-                    }
-                });
-            }
-        })();
-
         window.XMLMetadataBuilder = window.XMLMetadataBuilder || {};
         window.XMLMetadataBuilder.urls = {
             download: {$xmlEnricherDownloadUrl|json_encode}
@@ -176,9 +141,16 @@
                 }
             }
 
-            // 2. Link overwrite checkbox state to suffix field (disable / dim suffix when overwrite is checked)
-            var overwriteInput = tab.querySelector('input[name*="overwrite"]');
+            // 2. Link fileAction state to suffix field (disable / dim suffix when overwrite is selected)
+            var overwriteInput = tab.querySelector('input[name*="fileAction"][value="overwrite"], input[name*="overwrite"]');
             var suffixInput = tab.querySelector('input[name*="suffix"]');
+            var anyActionChecked = tab.querySelector('input[name*="fileAction"]:checked');
+            if (!anyActionChecked) {
+                var defaultActionRadio = tab.querySelector('input[name*="fileAction"][value="suffix"]');
+                if (defaultActionRadio) {
+                    defaultActionRadio.checked = true;
+                }
+            }
             if (overwriteInput && suffixInput) {
                 var isOverwrite = overwriteInput.checked;
                 suffixInput.disabled = isOverwrite;

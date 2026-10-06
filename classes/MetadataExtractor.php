@@ -7,6 +7,9 @@ use PKP\context\Context;
 use PKP\submission\Genre;
 use PKP\submissionFile\SubmissionFile;
 use PKP\services\PKPAuthorService;
+use APP\core\Application;
+use APP\facades\Repo;
+use PKP\core\PKPApplication;
 
 /**
  * MetadataExtractor
@@ -70,7 +73,7 @@ class MetadataExtractor
         $issueYear = null;
         
         if ($issueId) {
-            $issueObj = \APP\facades\Repo::issue()->get($issueId);
+            $issueObj = Repo::issue()->get($issueId);
             if ($issueObj) {
                 $volume = $issueObj->getVolume();
                 $issue = $issueObj->getNumber();
@@ -111,12 +114,12 @@ class MetadataExtractor
         // Construct article public URL for self-uri element
         $articleUrl = null;
         try {
-            $request = \APP\core\Application::get()->getRequest();
+            $request = Application::get()->getRequest();
             if ($request) {
                 $dispatcher = $request->getDispatcher();
                 $articleUrl = $dispatcher->url(
                     $request,
-                    \PKP\core\PKPApplication::ROUTE_PAGE,
+                    PKPApplication::ROUTE_PAGE,
                     null,
                     'article',
                     'view',
@@ -292,7 +295,7 @@ class MetadataExtractor
         $sectionId = $submission->getCurrentPublication()->getData('sectionId');
         if (!$sectionId) return ['title' => null, 'abbrev' => null];
 
-        $section = \APP\facades\Repo::section()->get($sectionId);
+        $section = Repo::section()->get($sectionId);
 
         return [
             'title'     => $section ? $section->getLocalizedTitle() : null,
@@ -309,7 +312,7 @@ class MetadataExtractor
 
         // Get accepted date from editorial decisions
         $acceptedDate = null;
-        $decisions = \APP\facades\Repo::decision()
+        $decisions = Repo::decision()
             ->getCollector()
             ->filterBySubmissionIds([$submission->getId()])
             ->getMany();
@@ -360,10 +363,10 @@ class MetadataExtractor
         $materials = [];
         
         // Get all submission files for this publication
-        $submissionFiles = \APP\facades\Repo::submissionFile()
+        $submissionFiles = Repo::submissionFile()
             ->getCollector()
             ->filterBySubmissionIds([$submission->getId()])
-            ->filterByFileStages([\PKP\submissionFile\SubmissionFile::SUBMISSION_FILE_DEPENDENT])
+            ->filterByFileStages([SubmissionFile::SUBMISSION_FILE_DEPENDENT])
             ->getMany();
         
         foreach ($submissionFiles as $file) {
@@ -373,13 +376,13 @@ class MetadataExtractor
             // If a parent file is specified, prioritize files associated with it.
             // However, we also allow files associated with the representation (galley).
             // The main goal here is to avoid picking up files from *other* XML versions.
-            if ($parentFileId && $assocType == \APP\core\Application::ASSOC_TYPE_SUBMISSION_FILE && $assocId != $parentFileId) {
+            if ($parentFileId && $assocType == Application::ASSOC_TYPE_SUBMISSION_FILE && $assocId != $parentFileId) {
                 continue;
             }
 
             // Only include files associated with the current publication or specific submission file
-            if ($assocType == \APP\core\Application::ASSOC_TYPE_SUBMISSION_FILE ||
-                $assocType == \APP\core\Application::ASSOC_TYPE_REPRESENTATION) {
+            if ($assocType == Application::ASSOC_TYPE_SUBMISSION_FILE ||
+                $assocType == Application::ASSOC_TYPE_REPRESENTATION) {
 
                 $label = $file->getLocalizedData('name') ?: 'Supplementary File ' . $file->getId();
                 
