@@ -243,7 +243,6 @@ class MetadataExtractor
             }
 
             $author['affiliationId'] = $author['affiliationIds'][0] ?? null;
-            $author['affiliation'] = implode('; ', array_column($author['affiliations'] ?? [], 'name'));
         }
         unset($author);
 

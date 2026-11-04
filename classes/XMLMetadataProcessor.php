@@ -4,7 +4,6 @@ namespace APP\plugins\generic\XMLMetadataBuilder\classes;
 use DOMDocument;
 use APP\plugins\generic\XMLMetadataBuilder\classes\JATSBuilder;
 use APP\plugins\generic\XMLMetadataBuilder\classes\MetadataExtractor;
-use APP\core\Application;
 
 class XMLMetadataProcessor
 {
@@ -29,16 +28,6 @@ class XMLMetadataProcessor
             if (!$loaded) {
                 $errorMsg = isset($errors[0]) ? trim($errors[0]->message) : 'XML malformado';
                 throw new \Exception('No se pudo parsear el archivo XML original: ' . $errorMsg);
-            }
-        }
-
-        // Get context (if available and not provided)
-        if (!$context) {
-            try {
-                $request = Application::get()->getRequest();
-                $context = $request ? $request->getContext() : null;
-            } catch (\Throwable $e) {
-                // Application::get() might fail in CLI/Test mode without bootstrap
             }
         }
 
@@ -88,17 +77,11 @@ class XMLMetadataProcessor
                     'given' => $a['given'] ?? '',
                     'email' => $a['email'] ?? null,
                     'orcid' => $a['orcid'] ?? null,
-                    'affiliation' => $a['affiliation'] ?? null, // Fallback string
                     'affiliationId' => $a['affiliationId'] ?? null, // ID for xref (first affiliation)
                     'affiliationIds' => $a['affiliationIds'] ?? [], // All affiliation IDs (OJS 3.5: several per author)
                     'sequence' => $a['sequence'] ?? null,
                     'isPrimary' => $a['isPrimary'] ?? false,
                     'biography' => $a['biography'] ?? null, // For <bio> element in <contrib>
-                    // JATSBuilder expects 'affiliations' key for legacy reasons? 
-                    // No, JATSBuilder now looks for 'affiliationId' OR 'affiliation'. 
-                    // But previous code (lines 79) mapped 'affiliations' => [string].
-                    // We must ensure JATSBuilder receives what it expects.
-                    // New JATSBuilder expects 'affiliationId' for xref.
                 ];
             }, $meta['authors'] ?? []),
             'license' => [
