@@ -15,6 +15,8 @@
  *                              panel JATS o copia de core al crear una versión).
  *  2. Publication::publish     Se programa o publica la publicación: pasada final con
  *                              los metadatos definitivos (fecha, número, licencia, DOI).
+ *                              Si la revista lo tiene activado (por defecto sí), se
+ *                              genera o actualiza la galerada XML desde ese JATS.
  *  3. Publication::version     Core copia el XML a la versión nueva pero no sus
  *                              dependientes (imágenes): el plugin los copia.
  *  4. Publication::edit,       Cambian los metadatos o los autores: se enriquece al
@@ -23,12 +25,21 @@
 
 namespace APP\plugins\generic\XMLMetadataBuilder;
 
+use APP\facades\Repo;
+use APP\notification\NotificationManager;
 use APP\plugins\generic\XMLMetadataBuilder\classes\JatsEnrichmentService;
+use APP\plugins\generic\XMLMetadataBuilder\classes\XmlGalleyService;
+use PKP\core\JSONMessage;
+use PKP\linkAction\LinkAction;
+use PKP\linkAction\request\AjaxModal;
 use PKP\plugins\GenericPlugin;
 use PKP\plugins\Hook;
 
 class XMLMetadataBuilderPlugin extends GenericPlugin
 {
+    /** Setting: generate the XML galley from the publication JATS on publication */
+    public const SETTING_CREATE_XML_GALLEY = 'createXmlGalley';
+
     /**
      * @copydoc Plugin::register()
      */
@@ -91,11 +102,78 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
      */
     public function onPublish(string $hookName, array $args): bool
     {
-        $newPublication = $args[0];
+        [$newPublication, , $submission] = $args;
 
         $this->getService()->enrichPublication($newPublication, 'publish');
 
+        if ($this->isXmlGalleyEnabled((int) $submission->getData('contextId'))) {
+            (new XmlGalleyService())->syncXmlGalley(
+                Repo::publication()->get($newPublication->getId()) ?? $newPublication
+            );
+        }
+
         return Hook::CONTINUE;
+    }
+
+    /**
+     * Whether the journal wants the XML galley generated on publication.
+     * Enabled by default, as in OJS 3.4.
+     */
+    public function isXmlGalleyEnabled(int $contextId): bool
+    {
+        $setting = $this->getSetting($contextId, self::SETTING_CREATE_XML_GALLEY);
+
+        return $setting === null ? true : (bool) $setting;
+    }
+
+    /**
+     * @copydoc Plugin::getActions()
+     */
+    public function getActions($request, $actionArgs): array
+    {
+        $actions = parent::getActions($request, $actionArgs);
+        if (!$this->getEnabled()) {
+            return $actions;
+        }
+
+        $url = $request->getRouter()->url($request, null, null, 'manage', null, [
+            'verb' => 'settings',
+            'plugin' => $this->getName(),
+            'category' => 'generic',
+        ]);
+        array_unshift($actions, new LinkAction(
+            'settings',
+            new AjaxModal($url, $this->getDisplayName()),
+            __('manager.plugins.settings')
+        ));
+
+        return $actions;
+    }
+
+    /**
+     * @copydoc Plugin::manage()
+     */
+    public function manage($args, $request): JSONMessage
+    {
+        if ($request->getUserVar('verb') !== 'settings') {
+            return parent::manage($args, $request);
+        }
+
+        $form = new XMLMetadataBuilderSettingsForm($this, $request->getContext()->getId());
+        if (!$request->getUserVar('save')) {
+            $form->initData();
+            return new JSONMessage(true, $form->fetch($request));
+        }
+
+        $form->readInputData();
+        if (!$form->validate()) {
+            return new JSONMessage(true, $form->fetch($request));
+        }
+
+        $form->execute();
+        (new NotificationManager())->createTrivialNotification($request->getUser()->getId());
+
+        return new JSONMessage(true);
     }
 
     /**

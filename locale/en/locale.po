@@ -28,3 +28,12 @@ msgstr "The JATS was copied to the new version with its dependent files and enri
 
 msgid "plugins.generic.XMLMetadataBuilder.log.enriched.edit"
 msgstr "The publication JATS was updated after a metadata change."
+
+msgid "plugins.generic.XMLMetadataBuilder.log.enriched.galley"
+msgstr "The XML galley was created or updated from the publication JATS."
+
+msgid "plugins.generic.XMLMetadataBuilder.settings.galley"
+msgstr "XML galley"
+
+msgid "plugins.generic.XMLMetadataBuilder.settings.createXmlGalley"
+msgstr "On publication, create or update the XML galley from the enriched publication JATS (with its images)"

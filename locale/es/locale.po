@@ -28,3 +28,12 @@ msgstr "El JATS se copió a la versión nueva con sus archivos dependientes y se
 
 msgid "plugins.generic.XMLMetadataBuilder.log.enriched.edit"
 msgstr "El JATS de la publicación se actualizó por un cambio en los metadatos."
+
+msgid "plugins.generic.XMLMetadataBuilder.log.enriched.galley"
+msgstr "La galerada XML se generó o actualizó a partir del JATS de la publicación."
+
+msgid "plugins.generic.XMLMetadataBuilder.settings.galley"
+msgstr "Galerada XML"
+
+msgid "plugins.generic.XMLMetadataBuilder.settings.createXmlGalley"
+msgstr "Al publicar, generar o actualizar la galerada XML a partir del JATS enriquecido de la publicación (con sus imágenes)"
