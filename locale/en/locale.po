@@ -25,3 +25,6 @@ msgstr "The publication JATS was enriched with the final metadata on publication
 
 msgid "plugins.generic.XMLMetadataBuilder.log.enriched.version"
 msgstr "The JATS was copied to the new version with its dependent files and enriched."
+
+msgid "plugins.generic.XMLMetadataBuilder.log.enriched.edit"
+msgstr "The publication JATS was updated after a metadata change."

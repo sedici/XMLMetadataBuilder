@@ -35,6 +35,56 @@ class JatsEnrichmentService
     /** Files being enriched in this request, to avoid re-entrant enrichment */
     protected static array $inProgress = [];
 
+    /** Publications to enrich at the end of the request: [publicationId => reason] */
+    protected static array $scheduled = [];
+
+    /**
+     * Enrich a publication JATS at the end of the request.
+     *
+     * Publication::edit and Author::edit run before the changes are saved (and
+     * author affiliations are saved inside the author update), so enriching
+     * right away would use the old data. Several changes in the same request
+     * (e.g. editing many authors) produce a single enrichment.
+     * Core uses the same mechanism for its job queue and scheduler.
+     */
+    public static function scheduleEnrichment(int $publicationId, string $reason): void
+    {
+        if (!$publicationId) {
+            return;
+        }
+
+        if (empty(self::$scheduled)) {
+            $workingDir = getcwd();
+            register_shutdown_function(static function () use ($workingDir) {
+                // The working directory can change once the script has finished
+                chdir($workingDir);
+                (new static())->runScheduled();
+            });
+        }
+
+        self::$scheduled[$publicationId] ??= $reason;
+    }
+
+    /**
+     * Enrich the publications scheduled during the request.
+     */
+    public function runScheduled(): void
+    {
+        $scheduled = self::$scheduled;
+        self::$scheduled = [];
+
+        foreach ($scheduled as $publicationId => $reason) {
+            try {
+                $publication = Repo::publication()->get($publicationId);
+                if ($publication) {
+                    $this->enrichPublication($publication, $reason);
+                }
+            } catch (Throwable $e) {
+                error_log(self::LOG . "No se pudo enriquecer la publicación {$publicationId} ({$reason}): " . $e->getMessage());
+            }
+        }
+    }
+
     /**
      * Whether a submission file is the JATS file of a publication.
      */

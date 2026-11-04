@@ -17,6 +17,8 @@
  *                              los metadatos definitivos (fecha, número, licencia, DOI).
  *  3. Publication::version     Core copia el XML a la versión nueva pero no sus
  *                              dependientes (imágenes): el plugin los copia.
+ *  4. Publication::edit,       Cambian los metadatos o los autores: se enriquece al
+ *     Author::add/edit/delete  final de la petición, cuando los datos ya se guardaron.
  */
 
 namespace APP\plugins\generic\XMLMetadataBuilder;
@@ -38,6 +40,10 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
             Hook::add('SubmissionFile::add', $this->onSubmissionFileAdd(...));
             Hook::add('Publication::publish', $this->onPublish(...));
             Hook::add('Publication::version', $this->onVersion(...));
+            Hook::add('Publication::edit', $this->onPublicationEdit(...));
+            Hook::add('Author::add', $this->onAuthorChange(...));
+            Hook::add('Author::edit', $this->onAuthorChange(...));
+            Hook::add('Author::delete', $this->onAuthorChange(...));
         }
 
         return $success;
@@ -105,6 +111,46 @@ class XMLMetadataBuilderPlugin extends GenericPlugin
         [$newPublication, $oldPublication] = $args;
 
         $this->getService()->copyJatsDependentFiles($oldPublication, $newPublication);
+
+        return Hook::CONTINUE;
+    }
+
+    /**
+     * Mantener el JATS al día cuando cambian los metadatos de la publicación.
+     *
+     * El hook corre antes de guardar en la base, así que el enriquecimiento se
+     * programa para el final de la petición.
+     *
+     * @hook Publication::edit [[&$newPublication, $publication, $params, $request]]
+     */
+    public function onPublicationEdit(string $hookName, array $args): bool
+    {
+        $newPublication = $args[0];
+
+        JatsEnrichmentService::scheduleEnrichment((int) $newPublication->getId(), 'edit');
+
+        return Hook::CONTINUE;
+    }
+
+    /**
+     * Mantener el JATS al día cuando cambian los autores o sus afiliaciones,
+     * que en OJS 3.5 se guardan aparte de la publicación.
+     *
+     * Author::edit corre antes de guardar y las afiliaciones se guardan dentro
+     * del update del autor, así que el enriquecimiento se programa para el final
+     * de la petición.
+     *
+     * @hook Author::add [[$author]]
+     * @hook Author::edit [[$newAuthor, $author, $params]]
+     * @hook Author::delete [[$author]]
+     */
+    public function onAuthorChange(string $hookName, array $args): bool
+    {
+        $author = $args[0];
+
+        if ($publicationId = (int) $author->getData('publicationId')) {
+            JatsEnrichmentService::scheduleEnrichment($publicationId, 'edit');
+        }
 
         return Hook::CONTINUE;
     }
