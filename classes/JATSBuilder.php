@@ -585,19 +585,23 @@ class JATSBuilder
             $name->appendChild($this->el('given-names', $a['given']));
             $contrib->appendChild($name);
 
-            // Use xref for affiliation if available
-            if (!empty($a['affiliationId'])) {
+            // One xref per affiliation (OJS 3.5 allows several per author)
+            $affiliationIds = $a['affiliationIds'] ?? [];
+            if (empty($affiliationIds) && !empty($a['affiliationId'])) {
+                $affiliationIds = [$a['affiliationId']];
+            }
+            foreach ($affiliationIds as $affiliationId) {
                 $xref = $this->elAttr('xref', [
                     'ref-type' => 'aff',
-                    'rid'      => $a['affiliationId']
+                    'rid'      => $affiliationId
                 ]);
-                
+
                 // Add <sup> with affiliation number (extract number from affiliation ID like 'aff1' -> '1')
-                $affNumber = preg_replace('/\D/', '', $a['affiliationId']); // Remove non-digits
+                $affNumber = preg_replace('/\D/', '', $affiliationId); // Remove non-digits
                 if (!empty($affNumber)) {
                     $xref->appendChild($this->el('sup', $affNumber));
                 }
-                
+
                 $contrib->appendChild($xref);
             }
 

@@ -42,9 +42,13 @@ class XMLMetadataProcessor
             }
         }
 
+        if (!$submission || !$publication || !$context) {
+            throw new \Exception('Faltan el envío, la publicación o la revista para enriquecer el XML');
+        }
+
         // Extract metadata from OJS using existing extractor
         $extractor = new MetadataExtractor();
-        $meta = $extractor->extract($submission, $context, $parentFileId);
+        $meta = $extractor->extract($submission, $context, $publication, $parentFileId);
 
         // Map extractor output to JATSBuilder format
         $builderMeta = [
@@ -85,7 +89,8 @@ class XMLMetadataProcessor
                     'email' => $a['email'] ?? null,
                     'orcid' => $a['orcid'] ?? null,
                     'affiliation' => $a['affiliation'] ?? null, // Fallback string
-                    'affiliationId' => $a['affiliationId'] ?? null, // ID for xref
+                    'affiliationId' => $a['affiliationId'] ?? null, // ID for xref (first affiliation)
+                    'affiliationIds' => $a['affiliationIds'] ?? [], // All affiliation IDs (OJS 3.5: several per author)
                     'sequence' => $a['sequence'] ?? null,
                     'isPrimary' => $a['isPrimary'] ?? false,
                     'biography' => $a['biography'] ?? null, // For <bio> element in <contrib>

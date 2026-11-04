@@ -2,14 +2,14 @@
 
 namespace APP\plugins\generic\XMLMetadataBuilder\classes;
 
-use PKP\submission\PKPSubmission;
-use PKP\context\Context;
-use PKP\submission\Genre;
-use PKP\submissionFile\SubmissionFile;
-use PKP\services\PKPAuthorService;
 use APP\core\Application;
 use APP\facades\Repo;
+use APP\publication\Publication;
+use PKP\context\Context;
 use PKP\core\PKPApplication;
+use PKP\decision\Decision;
+use PKP\submission\PKPSubmission;
+use PKP\submissionFile\SubmissionFile;
 
 /**
  * MetadataExtractor
@@ -22,20 +22,24 @@ class MetadataExtractor
 
     /**
      * Punto de entrada principal
+     *
+     * Se trabaja siempre sobre la publicación recibida (la dueña del JATS) y no
+     * sobre la publicación actual del envío: al crear una versión nueva, el JATS
+     * de esa versión se enriquece antes de que sea la publicación actual.
      */
-    public function extract(PKPSubmission $submission, Context $context, $parentFileId = null): array
-    {        
-        $authors = $this->extractAuthors($submission);
+    public function extract(PKPSubmission $submission, Context $context, Publication $publication, $parentFileId = null): array
+    {
+        $authors = $this->extractAuthors($publication);
         $affiliations = $this->processAffiliations($authors);
-        
+
         $result = [
             'journal'     => $this->extractJournal($context),
-            'article'     => $this->extractArticle($submission),
+            'article'     => $this->extractArticle($submission, $publication, $context),
             'authors'     => $authors,
             'affiliations'=> $affiliations,
-            'sections'    => $this->extractSections($submission, $context),
-            'pubDates'    => $this->extractPublicationDates($submission),
-            'permissions' => $this->extractPermissions($submission),
+            'sections'    => $this->extractSections($publication),
+            'pubDates'    => $this->extractPublicationDates($submission, $publication),
+            'permissions' => $this->extractPermissions($publication),
             'supplementaryMaterials' => $this->extractSupplementaryMaterials($submission, $parentFileId),
         ];
 
@@ -62,9 +66,8 @@ class MetadataExtractor
     /**
      * Datos del artículo
      */
-    protected function extractArticle(PKPSubmission $submission): array
+    protected function extractArticle(PKPSubmission $submission, Publication $publication, Context $context): array
     {
-        $publication = $submission->getCurrentPublication();
         $issueId = $publication->getData('issueId');
         
         // Extract volume/issue information if available
@@ -120,10 +123,11 @@ class MetadataExtractor
                 $articleUrl = $dispatcher->url(
                     $request,
                     PKPApplication::ROUTE_PAGE,
-                    null,
+                    $context->getPath(),
                     'article',
                     'view',
-                    [$submission->getBestId()]
+                    [$publication->getData('urlPath') ?: $submission->getId()],
+                    urlLocaleForPage: ''
                 );
             }
         } catch (\Throwable $e) {
@@ -139,7 +143,7 @@ class MetadataExtractor
             'primaryLocale' => $publication->getData('locale'),           // Idioma principal de la publicación
             'doi'         => $publication->getDoi(),
             'abstract'    => $publication->getData('abstract') ?? [],     // Array multilingüe
-            'keywords'    => $publication->getData('keywords') ?? [],     // Array multilingüe: ['es_ES' => ['kw1', 'kw2'], 'en_US' => ['kw1', 'kw2']]
+            'keywords'    => $this->extractKeywords($publication),         // Array multilingüe: ['es' => ['kw1', 'kw2'], 'en' => ['kw1', 'kw2']]
             'pages'       => $pages,
             'firstPage'   => $firstPage,
             'lastPage'    => $lastPage,
@@ -152,6 +156,24 @@ class MetadataExtractor
             'issueId'     => $issueId,
             'submissionId'=> $submission->getId(),
         ];
+    }
+
+    /**
+     * Palabras clave por idioma.
+     *
+     * En OJS 3.5 cada palabra clave es un objeto {name, source, identifier}
+     * (vocabularios controlados); en 3.4 era un string.
+     */
+    protected function extractKeywords(Publication $publication): array
+    {
+        $result = [];
+        foreach ((array) $publication->getData('keywords') as $locale => $keywords) {
+            $result[$locale] = array_values(array_filter(array_map(
+                fn ($keyword) => is_array($keyword) ? ($keyword['name'] ?? null) : $keyword,
+                (array) $keywords
+            )));
+        }
+        return $result;
     }
 
     /**
@@ -176,92 +198,86 @@ class MetadataExtractor
 
     /**
      * Procesa las afiliaciones de los autores para extraer únicas y asignar IDs
-     * 
-     * @param array $authors Referencia al array de autores para inyectar affiliationId
+     *
+     * En OJS 3.5 un autor puede tener varias afiliaciones (con ROR). Cada autor
+     * recibe 'affiliationIds' (todas) y 'affiliationId' (la primera, por compatibilidad).
+     * El país sigue siendo un dato del autor, así que se asocia a la afiliación
+     * con el país del primer autor que la tiene.
+     *
+     * @param array $authors Referencia al array de autores para inyectar los IDs
      * @return array Lista de afiliaciones únicas con ID
      */
     protected function processAffiliations(array &$authors): array
     {
-        $affiliationsMap = []; // 'Affiliation String' => 'aff1'
-        $affiliationsList = []; // [['id' => 'aff1', 'name' => 'Affiliation String', 'country' => 'Country']]
+        $affiliationsMap = []; // 'Nombre de la afiliación' => 'aff1'
+        $affiliationsList = []; // 'aff1' => ['id' => 'aff1', 'name' => ..., 'ror' => ..., 'country' => ...]
         $nextId = 1;
-        
-        // First pass: build affiliations map with country info
-        $affCountryMap = []; // Track country for each affiliation string
-        foreach ($authors as $author) {
-            $affString = $author['affiliation'] ?? '';
-            $country = $author['country'] ?? '';
-            
-            if (!empty($affString) && trim($affString) !== '') {
-                // Associate country with this affiliation if we have it
-                if (!isset($affCountryMap[$affString]) && !empty($country)) {
-                    $affCountryMap[$affString] = $country;
-                }
-            }
-        }
-        
-        // Second pass: assign IDs and build affiliations list
+
         foreach ($authors as &$author) {
-            $affString = $author['affiliation'] ?? '';
-            
-            // Only process non-empty affiliations
-            if (!empty($affString) && trim($affString) !== '') {
-                if (!isset($affiliationsMap[$affString])) {
+            $author['affiliationIds'] = [];
+
+            foreach ($author['affiliations'] ?? [] as $affiliation) {
+                $name = trim($affiliation['name'] ?? '');
+                if ($name === '') {
+                    continue;
+                }
+
+                if (!isset($affiliationsMap[$name])) {
                     $id = 'aff' . $nextId++;
-                    $affiliationsMap[$affString] = $id;
-                    $affiliationsList[] = [
-                        'id' => $id, 
-                        'name' => $affString,
-                        'country' => $affCountryMap[$affString] ?? null, // Add country if available
+                    $affiliationsMap[$name] = $id;
+                    $affiliationsList[$id] = [
+                        'id' => $id,
+                        'name' => $name,
+                        'ror' => $affiliation['ror'] ?? null,
+                        'country' => null,
                     ];
                 }
-                $author['affiliationId'] = $affiliationsMap[$affString];
-            } else {
-                $author['affiliationId'] = null;
+
+                $id = $affiliationsMap[$name];
+                if (empty($affiliationsList[$id]['country']) && !empty($author['country'])) {
+                    $affiliationsList[$id]['country'] = $author['country'];
+                }
+                if (!in_array($id, $author['affiliationIds'])) {
+                    $author['affiliationIds'][] = $id;
+                }
             }
+
+            $author['affiliationId'] = $author['affiliationIds'][0] ?? null;
+            $author['affiliation'] = implode('; ', array_column($author['affiliations'] ?? [], 'name'));
         }
-        
-        return $affiliationsList;
+        unset($author);
+
+        return array_values($affiliationsList);
     }
 
     /**
-     * Extrae autores del submission
+     * Extrae los autores de la publicación
      */
-    protected function extractAuthors(PKPSubmission $submission): array
+    protected function extractAuthors(Publication $publication): array
     {
-        $publication = $submission->getCurrentPublication();
         $authors = $publication->getData('authors') ?? [];
         $locale = $publication->getData('locale');
         $result = [];
 
         foreach ($authors as $author) {
-            $given = $author->getGivenName($locale);
-            $surname = $author->getFamilyName($locale);
-            $affiliation = $author->getAffiliation($locale);
-
-            // Diagnostic: Check if data exists in "best match" locale if missing in current locale
-            if (empty($surname)) {
-                $check = $author->getLocalizedFamilyName();
+            $affiliations = [];
+            foreach ($author->getAffiliations() as $affiliation) {
+                $affiliations[] = [
+                    'name' => $this->utf8ize($affiliation->getLocalizedName($locale)),
+                    'ror' => $affiliation->getRor(),
+                ];
             }
-            if (empty($affiliation)) {
-                $check = $author->getLocalizedAffiliation();
-            }
-
-            $given = $this->utf8ize($author->getGivenName($locale));
-            $surname = $this->utf8ize($author->getFamilyName($locale));
-            $affiliation = $this->utf8ize($author->getAffiliation($locale));
-            $biography = $this->utf8ize($author->getBiography($locale));
 
             $result[] = [
-                'given'     => $given,
-                'surname'   => $surname,
+                'given'     => $this->utf8ize($author->getGivenName($locale) ?: $author->getLocalizedGivenName()),
+                'surname'   => $this->utf8ize($author->getFamilyName($locale) ?: $author->getLocalizedFamilyName()),
                 'email'     => $author->getEmail(), // Email is usually ASCII
                 'orcid'     => $author->getOrcid(),
-                'affiliation' => $affiliation ?? '',
+                'affiliations' => $affiliations,
                 'country'     => $author->getCountry(),
                 'sequence'    => $author->getSequence(),
-                'isPrimary'   => $author->getPrimaryContact(), // For author-notes (corresponding author)
-                'biography'   => $biography, // For <bio> element in <contrib>
+                'isPrimary'   => (int) $publication->getData('primaryContactId') === (int) $author->getId(), // For author-notes (corresponding author)
+                'biography'   => $this->utf8ize($author->getBiography($locale)), // For <bio> element in <contrib>
             ];
         }
 
@@ -290,9 +306,9 @@ class MetadataExtractor
     /**
      * Extrae la sección (ej: Artículos, Reseñas, Comunicaciones, etc.)
      */
-    protected function extractSections(PKPSubmission $submission, Context $context): array
+    protected function extractSections(Publication $publication): array
     {
-        $sectionId = $submission->getCurrentPublication()->getData('sectionId');
+        $sectionId = $publication->getData('sectionId');
         if (!$sectionId) return ['title' => null, 'abbrev' => null];
 
         $section = Repo::section()->get($sectionId);
@@ -306,10 +322,8 @@ class MetadataExtractor
     /**
      * Fechas importantes del artículo
      */
-    protected function extractPublicationDates(PKPSubmission $submission): array
+    protected function extractPublicationDates(PKPSubmission $submission, Publication $pub): array
     {
-        $pub = $submission->getCurrentPublication();
-
         // Get accepted date from editorial decisions
         $acceptedDate = null;
         $decisions = Repo::decision()
@@ -322,8 +336,8 @@ class MetadataExtractor
             $decisionType = $decision->getData('decision');
             $dateDecided = $decision->getData('dateDecided');
                         
-            // Review stage (stageId=3) and accepted decision (decision=2 in OJS 3.4)
-            if ($stageId == 3 && $decisionType == 2) {
+            // Aceptación en la etapa de revisión externa
+            if ($stageId == WORKFLOW_STAGE_ID_EXTERNAL_REVIEW && $decisionType == Decision::ACCEPT) {
                 $acceptedDate = $dateDecided;
                 break; // Use first acceptance decision found
             }
@@ -340,10 +354,8 @@ class MetadataExtractor
     /**
      * Datos de copyright / licencia
      */
-    protected function extractPermissions(PKPSubmission $submission): array
+    protected function extractPermissions(Publication $pub): array
     {
-        $pub = $submission->getCurrentPublication();
-
         return [
             'copyrightHolder' => $pub->getLocalizedData('copyrightHolder'),
             'copyrightYear'   => $pub->getData('copyrightYear'),
@@ -359,7 +371,6 @@ class MetadataExtractor
      */
     protected function extractSupplementaryMaterials(PKPSubmission $submission, $parentFileId = null): array
     {
-        $publication = $submission->getCurrentPublication();
         $materials = [];
         
         // Get all submission files for this publication
