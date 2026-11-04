@@ -3,16 +3,15 @@
 <!--
   * version.xml
   *
-  * Copyright (c) 2017-2023 Simon Fraser University
-  * Copyright (c) 2017-2023 John Willinsky
-  * Distributed under the GNU GPL v3. For full terms see the file docs/COPYING.
+  * Distributed under the GNU GPL v3. For full terms see the file LICENSE.
   *
   * Plugin version information.
   -->
 <version>
 	<application>XMLMetadataBuilder</application>
 	<type>plugins.generic</type>
-	<release>1.0.0.0</release>
-	<date>2023-05-15</date>
+	<release>2.0.0.0</release>
+	<date>2026-11-04</date>
+	<lazy-load>1</lazy-load>
 	<class>XMLMetadataBuilderPlugin</class>
 </version>
