@@ -353,7 +353,7 @@ class JATSBuilder
                 // Add caption/description if available
                 if (!empty($material['caption'])) {
                     $caption = $this->el('caption');
-                    $caption->appendChild($this->el('p', strip_tags($material['caption'])));
+                    $caption->appendChild($this->el('p', $this->htmlToText($material['caption'])));
                     $suppMat->appendChild($caption);
                 }
                 
@@ -410,7 +410,7 @@ class JATSBuilder
         if (!empty($abstracts[$primaryLocale])) {
             $abstract = $this->el('abstract');
             // Wrap abstract in <p> tag as per SPS requirements
-            $p = $this->el('p', strip_tags($abstracts[$primaryLocale]));
+            $p = $this->el('p', $this->htmlToText($abstracts[$primaryLocale]));
             $abstract->appendChild($p);
             $articleMeta->appendChild($abstract);
         }
@@ -424,7 +424,7 @@ class JATSBuilder
             
             $jatsLang = $this->convertLocaleToJatsLang($locale);
             $transAbstract = $this->elAttr('trans-abstract', ['xml:lang' => $jatsLang]);
-            $p = $this->el('p', strip_tags($abstractText));
+            $p = $this->el('p', $this->htmlToText($abstractText));
             $transAbstract->appendChild($p);
             $articleMeta->appendChild($transAbstract);
         }
@@ -542,10 +542,29 @@ class JATSBuilder
      */
     private function cleanTitle(?string $text): string
     {
-        if ($text === null) {
+        return $this->htmlToText($text);
+    }
+
+    /**
+     * Convierte el HTML que guarda OJS (resúmenes, títulos, biografías) en texto
+     * plano para un nodo de texto del XML.
+     *
+     * OJS guarda estos campos como HTML, con entidades (&gt;, &amp;, &aacute;...).
+     * Si se pasan tal cual a createTextNode(), el DOM las vuelve a escapar y el
+     * XML queda con &amp;gt; (doble escapado).
+     *
+     * El orden importa: primero se quitan las etiquetas y después se decodifican
+     * las entidades. Al revés, un "&lt;10%" decodificado como "<10%" se tomaría
+     * como el inicio de una etiqueta y strip_tags() cortaría el resto del texto.
+     * ENT_HTML5 decodifica también las entidades con nombre de HTML (&aacute;,
+     * &nbsp;), que ENT_XML1 no reconoce.
+     */
+    private function htmlToText(?string $html): string
+    {
+        if ($html === null) {
             return '';
         }
-        return trim(strip_tags($text));
+        return trim(html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
     }
 
     /**
@@ -615,13 +634,13 @@ class JATSBuilder
             if (!empty($a['biography'])) {
                 $biography = $a['biography'];
                 // Skip if biography is empty after stripping HTML tags
-                if (trim(strip_tags($biography)) !== '') {
+                $bioText = $this->htmlToText($biography);
+                if ($bioText !== '') {
                     $bio = $this->el('bio');
                     
                     // Add biography as paragraph (strip HTML tags for plain text)
                     // JATS allows multiple paragraphs, sections, etc. in bio
                     // For simplicity, we use a single <p> element
-                    $bioText = strip_tags($biography);
                     $bio->appendChild($this->el('p', $bioText));
                     
                     $contrib->appendChild($bio);
