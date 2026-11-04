@@ -21,6 +21,7 @@ namespace APP\plugins\generic\XMLMetadataBuilder\classes;
 use APP\core\Application;
 use APP\facades\Repo;
 use APP\publication\Publication;
+use PKP\db\DAORegistry;
 use PKP\galley\Galley;
 use PKP\submissionFile\SubmissionFile;
 use Throwable;
@@ -74,16 +75,23 @@ class XmlGalleyService extends JatsEnrichmentService
             if ($contentChanged) {
                 $this->replaceFileContent($galleyFile, $content);
             }
+            $fixes = [];
             if ((int) $galleyFile->getData('sourceSubmissionFileId') !== $jatsFile->getId()) {
-                Repo::submissionFile()->edit($galleyFile, ['sourceSubmissionFileId' => $jatsFile->getId()]);
+                $fixes['sourceSubmissionFileId'] = $jatsFile->getId();
+            }
+            $genreId = $this->getGalleyGenreId($jatsFile);
+            if ($genreId && !$this->isPrimaryGenre((int) $galleyFile->getData('genreId'), $jatsFile)) {
+                $fixes['genreId'] = $genreId;
+            }
+            if ($fixes) {
+                Repo::submissionFile()->edit(Repo::submissionFile()->get($galleyFile->getId()), $fixes);
             }
             $dependentsChanged = $this->syncDependentFiles($jatsFile, Repo::submissionFile()->get($galleyFile->getId()));
 
             if ($contentChanged || $dependentsChanged) {
                 $this->logEnrichment($jatsFile, 'galley');
-                return true;
             }
-            return false;
+            return $contentChanged || $dependentsChanged || !empty($fixes);
         } catch (Throwable $e) {
             error_log(self::LOG . 'No se pudo generar la galerada XML de la publicación ' . $publication->getId() . ': ' . $e->getMessage());
             return false;
@@ -157,7 +165,7 @@ class XmlGalleyService extends JatsEnrichmentService
             'assocType' => Application::ASSOC_TYPE_REPRESENTATION,
             'assocId' => $galley->getId(),
             'sourceSubmissionFileId' => $jatsFile->getId(),
-            'genreId' => $jatsFile->getData('genreId'),
+            'genreId' => $this->getGalleyGenreId($jatsFile),
             'name' => $jatsFile->getData('name'),
             'uploaderUserId' => Application::get()->getRequest()->getUser()?->getId() ?? $jatsFile->getData('uploaderUserId'),
         ]);
@@ -170,6 +178,47 @@ class XmlGalleyService extends JatsEnrichmentService
         }
 
         return Repo::submissionFile()->get($galleyFileId);
+    }
+
+    /**
+     * Genre for the galley file.
+     *
+     * The article page only lists galleys whose file has a primary genre
+     * (e.g. "Article Text"). The JATS uploaded in the publication JATS panel
+     * usually has no genre: core only sets it when the journal has a single
+     * genre. In that case the first primary genre of the journal is used, as
+     * the production file did in OJS 3.4.
+     */
+    protected function getGalleyGenreId(SubmissionFile $jatsFile): ?int
+    {
+        $jatsGenreId = (int) $jatsFile->getData('genreId');
+        if ($this->isPrimaryGenre($jatsGenreId, $jatsFile)) {
+            return $jatsGenreId;
+        }
+
+        $primaryGenreIds = $this->getPrimaryGenreIds($jatsFile);
+
+        return $primaryGenreIds[0] ?? ($jatsGenreId ?: null);
+    }
+
+    protected function isPrimaryGenre(int $genreId, SubmissionFile $jatsFile): bool
+    {
+        return $genreId && in_array($genreId, $this->getPrimaryGenreIds($jatsFile));
+    }
+
+    /**
+     * Ids of the primary genres of the journal, in their configured order.
+     */
+    protected function getPrimaryGenreIds(SubmissionFile $jatsFile): array
+    {
+        $submission = Repo::submission()->get((int) $jatsFile->getData('submissionId'));
+        /** @var \PKP\submission\GenreDAO $genreDao */
+        $genreDao = DAORegistry::getDAO('GenreDAO');
+
+        return array_values(array_map(
+            fn ($genre) => (int) $genre->getId(),
+            $genreDao->getPrimaryByContextId($submission->getData('contextId'))->toArray()
+        ));
     }
 
     /**
